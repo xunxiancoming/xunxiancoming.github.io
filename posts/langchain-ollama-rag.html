@@ -1,0 +1,1566 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LangChain × Ollama 本地 Embeddings 与向量持久化实战</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='42' fill='%23d93a1e'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='%23f7f4ec'>R</text></svg>">
+<style>
+:root{
+  --paper:#f7f4ec;
+  --paper-2:#efeadd;
+  --ink:#16130e;
+  --ink-2:#4a443a;
+  --ink-3:#7a7264;
+  --vermilion:#d93a1e;
+  --vermilion-deep:#a92a12;
+  --teal:#0f6b62;
+  --rule:rgba(22,19,14,.16);
+  --rule-strong:rgba(22,19,14,.5);
+  --code-bg:#14171c;
+  --code-fg:#c9d1d9;
+  --card:#fffdf7;
+  --shadow:0 2px 0 rgba(22,19,14,.9);
+  --mono:"JetBrains Mono","Fira Code","SF Mono",Consolas,"Liberation Mono",monospace;
+  --serif:"Noto Serif CJK SC","Source Han Serif SC","Songti SC","SimSun",Georgia,serif;
+  --sans:"Noto Sans CJK SC","Source Han Sans SC","PingFang SC","Microsoft YaHei",-apple-system,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#14161a;
+    --paper-2:#1b1e24;
+    --ink:#e9e4d8;
+    --ink-2:#b5aea0;
+    --ink-3:#857e70;
+    --vermilion:#ff6a4d;
+    --vermilion-deep:#ff8f78;
+    --teal:#4fd1c0;
+    --rule:rgba(233,228,216,.16);
+    --rule-strong:rgba(233,228,216,.45);
+    --card:#1a1d23;
+    --shadow:0 2px 0 rgba(0,0,0,.6);
+  }
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;scroll-padding-top:80px}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-size:16.5px;
+  line-height:1.85;
+  -webkit-font-smoothing:antialiased;
+  background-image:
+    linear-gradient(var(--rule) 1px,transparent 1px),
+    linear-gradient(90deg,var(--rule) 1px,transparent 1px);
+  background-size:56px 56px;
+  background-attachment:fixed;
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.35;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+}
+.wrap{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:0 28px}
+a{color:var(--vermilion);text-decoration:none;border-bottom:1px solid transparent;transition:.2s}
+a:hover{border-bottom-color:var(--vermilion)}
+
+/* ---------- progress ---------- */
+#progress{position:fixed;top:0;left:0;height:4px;width:0;background:var(--vermilion);z-index:99;transition:width .1s linear}
+
+/* ---------- hero ---------- */
+header.hero{
+  border-bottom:3px solid var(--ink);
+  padding:72px 0 40px;
+  position:relative;overflow:hidden;
+}
+.hero .eyebrow{
+  font-family:var(--mono);font-size:12.5px;letter-spacing:.34em;text-transform:uppercase;
+  color:var(--vermilion);font-weight:700;margin-bottom:22px;
+  animation:rise .7s .05s both;
+}
+.hero h1{
+  font-family:var(--serif);font-weight:900;
+  font-size:clamp(32px,5vw,58px);line-height:1.16;letter-spacing:-.01em;
+  max-width:16em;animation:rise .7s .15s both;
+}
+.hero h1 em{font-style:normal;color:var(--vermilion);position:relative;white-space:nowrap}
+.hero h1 em::after{
+  content:"";position:absolute;left:0;right:0;bottom:.06em;height:.14em;
+  background:var(--vermilion);opacity:.28;transform:scaleX(0);transform-origin:left;
+  animation:swipe .8s .9s forwards;
+}
+.hero .sub{
+  margin-top:24px;max-width:44em;color:var(--ink-2);font-size:17.5px;
+  animation:rise .7s .3s both;
+}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:32px;animation:rise .7s .45s both}
+.chip{
+  font-family:var(--mono);font-size:12.5px;padding:5px 13px;
+  border:1.5px solid var(--ink);background:var(--card);
+  box-shadow:var(--shadow);
+}
+.chip.hot{background:var(--vermilion);color:#fff;border-color:var(--vermilion-deep)}
+.hero .stamp{
+  position:absolute;right:-8px;top:64px;transform:rotate(9deg);
+  border:3px solid var(--vermilion);color:var(--vermilion);
+  font-family:var(--mono);font-weight:800;font-size:13px;line-height:1.35;
+  padding:10px 16px;text-align:center;letter-spacing:.08em;
+  opacity:.85;border-radius:4px;
+  animation:stampIn .5s 1.1s both;
+}
+@keyframes rise{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:none}}
+@keyframes swipe{to{transform:scaleX(1)}}
+@keyframes stampIn{from{opacity:0;transform:rotate(9deg) scale(1.6)}to{opacity:.85;transform:rotate(9deg) scale(1)}}
+@media(max-width:820px){.hero .stamp{display:none}}
+
+/* ---------- layout with toc ---------- */
+.layout{display:grid;grid-template-columns:210px minmax(0,1fr);gap:46px;padding:52px 0 90px}
+.layout>main{min-width:0}
+@media(max-width:1040px){.layout{grid-template-columns:minmax(0,1fr);gap:0}nav.toc{display:none}}
+nav.toc{position:sticky;top:34px;align-self:start;font-family:var(--mono);font-size:12.5px}
+nav.toc .toc-title{letter-spacing:.28em;color:var(--ink-3);font-size:11px;margin-bottom:14px;font-weight:700}
+nav.toc a{
+  display:block;padding:6px 0 6px 14px;color:var(--ink-2);border:0;
+  border-left:2px solid var(--rule);transition:.18s;line-height:1.5;
+}
+nav.toc a:hover{color:var(--ink);border-left-color:var(--ink-3)}
+nav.toc a.on{color:var(--vermilion);border-left:2px solid var(--vermilion);font-weight:700;background:linear-gradient(90deg,rgba(217,58,30,.09),transparent)}
+
+/* ---------- sections ---------- */
+section{margin-bottom:76px}
+.sec-head{display:flex;align-items:flex-start;gap:18px;border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:30px}
+.sec-num{
+  font-family:var(--mono);font-weight:800;font-size:clamp(38px,7vw,58px);line-height:.9;
+  color:transparent;-webkit-text-stroke:2px var(--ink);flex-shrink:0;
+}
+.sec-head h2{font-family:var(--serif);font-size:clamp(23px,3.4vw,32px);font-weight:800;line-height:1.3;flex:1}
+.sec-head .tag{
+  font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--vermilion);
+  border:1.5px solid var(--vermilion);padding:3px 9px;align-self:center;white-space:nowrap;font-weight:700;
+}
+h3{font-family:var(--serif);font-size:20.5px;font-weight:800;margin:34px 0 12px;display:flex;align-items:center;gap:10px}
+h3::before{content:"";width:14px;height:14px;background:var(--vermilion);flex-shrink:0;clip-path:polygon(0 0,100% 0,100% 65%,65% 100%,0 100%)}
+p{margin:0 0 16px;color:var(--ink-2)}
+p strong,li strong{color:var(--ink);font-weight:700}
+code.inline{
+  font-family:var(--mono);font-size:.87em;background:var(--paper-2);
+  border:1px solid var(--rule);padding:1px 6px;border-radius:3px;color:var(--vermilion-deep);
+  white-space:nowrap;
+}
+ul.list{margin:0 0 18px;padding-left:0;list-style:none}
+ul.list li{position:relative;padding-left:24px;margin-bottom:9px;color:var(--ink-2)}
+ul.list li::before{content:"▸";position:absolute;left:4px;color:var(--vermilion);font-weight:700}
+
+/* ---------- principle card ---------- */
+.principle{
+  background:var(--card);border:1.5px solid var(--ink);border-left:7px solid var(--vermilion);
+  padding:20px 24px;margin:22px 0;box-shadow:var(--shadow);position:relative;
+}
+.principle .p-label{
+  position:absolute;top:-11px;left:16px;background:var(--vermilion);color:#fff;
+  font-family:var(--mono);font-size:11px;font-weight:800;letter-spacing:.2em;padding:2px 10px;
+}
+.principle h4{font-family:var(--serif);font-size:17.5px;margin:6px 0 8px;font-weight:800}
+.principle p{margin-bottom:8px;font-size:15.5px}
+.principle p:last-child{margin-bottom:0}
+.principle.teal{border-left-color:var(--teal)}
+.principle.teal .p-label{background:var(--teal)}
+
+/* ---------- diagram ---------- */
+.diagram{border:2px solid var(--ink);background:var(--card);padding:24px 20px;margin:26px 0;box-shadow:var(--shadow);overflow-x:auto}
+.diagram .lane-title{font-family:var(--mono);font-size:11.5px;letter-spacing:.2em;color:var(--ink-3);font-weight:700;margin-bottom:12px}
+.flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;row-gap:14px}
+.node{
+  border:1.5px solid var(--ink);background:var(--paper);padding:9px 13px;min-width:104px;
+  font-size:13.5px;line-height:1.4;font-weight:600;text-align:center;position:relative;
+}
+.node small{display:block;font-family:var(--mono);font-size:10.5px;color:var(--ink-3);font-weight:400;margin-top:2px}
+.node.persist{border:2.5px solid var(--vermilion);background:rgba(217,58,30,.07)}
+.node.persist small{color:var(--vermilion);font-weight:700}
+.node.model{border-style:dashed}
+.arrow{display:flex;align-items:center;padding:0 9px;color:var(--vermilion);font-size:19px;font-weight:700}
+.lane{margin-bottom:24px}
+.lane:last-child{margin-bottom:0}
+.diagram .legend{margin-top:18px;padding-top:14px;border-top:1px dashed var(--rule);font-size:13px;color:var(--ink-3);font-family:var(--mono);line-height:1.9}
+.diagram .legend b{color:var(--vermilion)}
+
+/* ---------- code & output ---------- */
+.block{margin:22px 0 30px;border:1.5px solid var(--ink);box-shadow:var(--shadow);background:var(--code-bg);position:relative}
+.block-bar{
+  display:flex;align-items:center;gap:12px;padding:8px 14px;
+  background:#0d0f13;border-bottom:1px solid rgba(255,255,255,.1);
+  font-family:var(--mono);font-size:11.5px;color:#8b949e;letter-spacing:.06em;
+}
+.block-bar .dot{width:9px;height:9px;border-radius:50%;background:#ff5f56;box-shadow:14px 0 0 #ffbd2e,28px 0 0 #27c93f;margin-right:30px}
+.block-bar .fname{color:#e6edf3;font-weight:700}
+.block-bar .lang{color:var(--vermilion);border:1px solid var(--vermilion);padding:0 7px;font-size:10.5px;font-weight:700}
+.block-bar .copy{
+  margin-left:auto;cursor:pointer;color:#8b949e;border:1px solid #30363d;
+  padding:2px 10px;font-family:var(--mono);font-size:11px;transition:.15s;background:transparent;
+}
+.block-bar .copy:hover{color:#fff;border-color:var(--vermilion);background:var(--vermilion)}
+pre{
+  margin:0;padding:18px 20px;overflow-x:auto;
+  font-family:var(--mono);font-size:13px;line-height:1.72;color:var(--code-fg);
+  white-space:pre;tab-size:4;
+}
+pre.out{background:#101317;color:#a9b4c0}
+.real-stamp{
+  position:absolute;top:44px;right:14px;transform:rotate(-7deg);
+  border:2.5px solid #ff6a4d;color:#ff6a4d;font-family:var(--mono);font-weight:800;
+  font-size:11px;letter-spacing:.1em;padding:4px 10px;pointer-events:none;
+  background:rgba(16,19,23,.85);border-radius:3px;z-index:2;
+}
+.tok-c{color:#6e7681;font-style:italic}
+.tok-s{color:#7ee787}
+.tok-k{color:#ff7b72;font-weight:600}
+.tok-n{color:#79c0ff}
+.tok-f{color:#d2a8ff}
+.tok-p{color:#ffa657}
+.tok-num{color:#79c0ff;font-weight:700}
+.tok-tag{color:#7ee787}
+
+/* ---------- tables ---------- */
+.tablewrap{overflow-x:auto;margin:22px 0;border:1.5px solid var(--ink);box-shadow:var(--shadow);background:var(--card)}
+table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:600px}
+th,td{padding:11px 15px;text-align:left;border-bottom:1px solid var(--rule)}
+th{background:var(--ink);color:var(--paper);font-family:var(--mono);font-size:12.5px;letter-spacing:.08em;font-weight:700}
+tbody tr:nth-child(even){background:rgba(0,0,0,.025)}
+@media(prefers-color-scheme:dark){tbody tr:nth-child(even){background:rgba(255,255,255,.03)}}
+td:first-child{font-weight:700;color:var(--ink)}
+td b.red{color:var(--vermilion)}
+tbody tr:last-child td{border-bottom:0}
+
+/* ---------- pitfalls ---------- */
+.pitfall{
+  border:1.5px solid var(--rule-strong);background:var(--card);margin-bottom:14px;
+  display:grid;grid-template-columns:56px 1fr;overflow:hidden;
+}
+.pitfall .no{
+  background:repeating-linear-gradient(45deg,var(--vermilion),var(--vermilion) 7px,var(--vermilion-deep) 7px,var(--vermilion-deep) 14px);
+  color:#fff;font-family:var(--mono);font-weight:800;font-size:18px;
+  display:flex;align-items:center;justify-content:center;
+}
+.pitfall .body{padding:14px 18px}
+.pitfall h5{font-family:var(--serif);font-size:16.5px;font-weight:800;margin-bottom:5px}
+.pitfall p{font-size:14.5px;margin:0;color:var(--ink-2)}
+
+/* ---------- appendix ---------- */
+details{border:1.5px solid var(--ink);background:var(--card);margin:16px 0;box-shadow:var(--shadow)}
+details summary{
+  cursor:pointer;padding:13px 18px;font-family:var(--mono);font-size:13.5px;font-weight:700;
+  list-style:none;display:flex;align-items:center;gap:10px;letter-spacing:.04em;
+}
+details summary::-webkit-details-marker{display:none}
+details summary::before{content:"＋";color:var(--vermilion);font-weight:800}
+details[open] summary::before{content:"－"}
+details[open] summary{border-bottom:1px solid var(--rule)}
+details .d-body{padding:0}
+details pre{background:var(--code-bg);font-size:12.5px;max-height:560px;overflow:auto}
+.tree{font-family:var(--mono);font-size:13px;background:var(--card);border:1.5px solid var(--ink);padding:18px 22px;box-shadow:var(--shadow);line-height:1.95;overflow-x:auto;color:var(--ink-2);white-space:pre-wrap;word-break:break-word}
+.tree b{color:var(--vermilion)}
+.tree .dim{color:var(--ink-3)}
+
+/* ---------- callout ---------- */
+.callout{
+  border:2px dashed var(--teal);background:rgba(15,107,98,.06);
+  padding:16px 20px;margin:22px 0;font-size:15px;color:var(--ink-2);
+}
+.callout b{color:var(--teal)}
+
+/* ---------- footer ---------- */
+footer{
+  border-top:3px solid var(--ink);padding:36px 0 60px;
+  font-family:var(--mono);font-size:12.5px;color:var(--ink-3);
+  display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;letter-spacing:.05em;
+}
+#top{
+  position:fixed;right:22px;bottom:22px;width:46px;height:46px;z-index:50;
+  background:var(--vermilion);color:#fff;border:0;cursor:pointer;font-size:20px;
+  opacity:0;pointer-events:none;transition:.3s;box-shadow:3px 3px 0 var(--ink);
+}
+#top.show{opacity:1;pointer-events:auto}
+#top:hover{transform:translateY(-3px)}
+#home{
+  position:fixed;left:22px;bottom:22px;z-index:50;
+  font-family:var(--mono);font-size:12.5px;font-weight:700;letter-spacing:.1em;
+  background:var(--card);color:var(--ink);padding:11px 16px;
+  border:2px solid var(--ink);box-shadow:3px 3px 0 var(--ink);
+  transition:.2s;
+}
+#home:hover{background:var(--vermilion);border-color:var(--vermilion-deep);color:#fff;transform:translate(-2px,-2px);box-shadow:5px 5px 0 var(--ink)}
+@media (max-width:560px){#home{left:12px;bottom:12px;padding:9px 12px}}
+::selection{background:var(--vermilion);color:#fff}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<a id="home" href="../index.html" title="返回博客首页">← 首页</a>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">RAG Field Manual · 本地化知识库 · v1.0</div>
+    <h1>LangChain × Ollama<br>本地 Embeddings 与<em>向量持久化实战</em></h1>
+    <p class="sub">
+      从一段中文到 768 维浮点数组，再从内存落到 Redis Stack 的 RediSearch 索引 ——
+      六个步骤跑通「切分 → 嵌入 → 入库 → 检索 → 生成」完整链路，
+      并用 Milvus Lite 做横向对照。本文所有终端输出均为<b>真实运行结果</b>，非示意。
+    </p>
+    <div class="chips">
+      <span class="chip hot">6 步 · 全部真实跑通</span>
+      <span class="chip">embeddinggemma · 768 维</span>
+      <span class="chip">Redis Stack / RediSearch</span>
+      <span class="chip">Milvus Lite 3.2.1</span>
+      <span class="chip">langchain 1.4.0</span>
+      <span class="chip">llama3.2 生成</span>
+      <span class="chip">Python 3.10.21</span>
+    </div>
+    <div class="stamp">REAL OUTPUT<br>真实运行验证<br>2026-10-03</div>
+  </div>
+</header>
+
+<div class="wrap layout">
+<nav class="toc" id="toc">
+  <div class="toc-title">目录 / CONTENTS</div>
+  <a href="#s0">00 · 原理：链路全景</a>
+  <a href="#s1">01 · 环境准备</a>
+  <a href="#s2">02 · 文本变向量</a>
+  <a href="#s3">03 · 文档切分</a>
+  <a href="#s4">04 · 写入 Redis</a>
+  <a href="#s5">05 · 持久化证明</a>
+  <a href="#s6">06 · RAG 链</a>
+  <a href="#s7">07 · Milvus 对照</a>
+  <a href="#s8">08 · 选型对比</a>
+  <a href="#s9">09 · 常见坑</a>
+  <a href="#s10">10 · 附录源码</a>
+</nav>
+
+<main>
+
+<!-- ============ 00 原理 ============ -->
+<section id="s0">
+  <div class="sec-head">
+    <div class="sec-num">00</div>
+    <h2>原理：这条链路到底在做什么</h2>
+    <span class="tag">WHY</span>
+  </div>
+
+  <p>大模型不能直接「读懂」文字，它只认识数字。所以要把语料变成<strong>向量（embedding）</strong>，
+  让语义相近的句子在数学空间里彼此靠近；再把向量交给<strong>向量数据库</strong>存起来 ——
+  这就是「持久化」三个字的含义：<strong>写一次，处处查，进程没了数据还在</strong>。</p>
+
+  <div class="principle">
+    <div class="p-label">PRINCIPLE 01</div>
+    <h4>Embedding：文本 → 768 维浮点数组</h4>
+    <p>本案例用 Ollama 本地运行的 <code class="inline">embeddinggemma</code> 模型，每段文字输出
+    <strong>768 个浮点数</strong>。两段文字的向量方向越接近，余弦相似度越接近 1。
+    下文 Step 1 会用真实数据验证：语义相近的「我喜欢吃苹果 / 苹果是我喜欢的水果」得分
+    <strong>0.9259</strong>，而语义转向电子产品的「我喜欢苹果手机」只得到 <strong>0.7834</strong>。</p>
+  </div>
+
+  <div class="principle teal">
+    <div class="p-label">PRINCIPLE 02</div>
+    <h4>持久化：为什么不能只用内存向量库</h4>
+    <p><code class="inline">InMemoryVectorStore</code> 随进程退出而蒸发，每次启动都要重新嵌入全部语料；
+    也无法被多个服务共享。向量库把「嵌入计算」与「向量存储」解耦：Redis Stack 用
+    <strong>RediSearch 模块</strong>在服务端建索引、答 KNN 查询；Milvus Lite 则把数据写进
+    <strong>本地数据目录</strong>。两者都让向量具备重启不丢、跨进程共享的能力。</p>
+  </div>
+
+  <div class="diagram">
+    <div class="lane">
+      <div class="lane-title">① 写入路径 / WRITE PATH</div>
+      <div class="flow">
+        <div class="node">原始文档<small>16 条知识</small></div>
+        <div class="arrow">→</div>
+        <div class="node">文本切分<small>chunk 200/40</small></div>
+        <div class="arrow">→</div>
+        <div class="node model">Ollama 嵌入<small>embeddinggemma</small></div>
+        <div class="arrow">→</div>
+        <div class="node">768 维向量<small>float32[]</small></div>
+        <div class="arrow">→</div>
+        <div class="node persist">向量库落盘<small>REDIS / MILVUS · PERSIST</small></div>
+      </div>
+    </div>
+    <div class="lane">
+      <div class="lane-title">② 查询路径 / QUERY PATH</div>
+      <div class="flow">
+        <div class="node">用户提问<small>自然语言</small></div>
+        <div class="arrow">→</div>
+        <div class="node model">问题嵌入<small>embed_query</small></div>
+        <div class="arrow">→</div>
+        <div class="node persist">KNN 相似检索<small>top-k + 元数据过滤</small></div>
+        <div class="arrow">→</div>
+        <div class="node">组装 Prompt<small>检索片段×3</small></div>
+        <div class="arrow">→</div>
+        <div class="node model">Ollama 生成<small>llama3.2</small></div>
+        <div class="arrow">→</div>
+        <div class="node">回答<small>基于资料</small></div>
+      </div>
+    </div>
+    <div class="legend">
+      实线框 = 数据组件 &nbsp;·&nbsp; 虚线框 = 模型推理 &nbsp;·&nbsp;
+      <b>红框 = 本教程的持久化落点</b><br>
+      同一套写入/查询代码，只改初始化参数即可在 Redis Stack 与 Milvus 之间切换。
+    </div>
+  </div>
+</section>
+
+<!-- ============ 01 环境 ============ -->
+<section id="s1">
+  <div class="sec-head">
+    <div class="sec-num">01</div>
+    <h2>Step 0 · 环境准备：三个前置条件</h2>
+    <span class="tag">SETUP</span>
+  </div>
+
+  <ul class="list">
+    <li><strong>Ollama 与模型</strong>：本地 11434 端口常驻，拉取嵌入模型与生成模型各一个。</li>
+    <li><strong>Redis Stack</strong>：必须是 <code class="inline">redis/redis-stack</code> 镜像 —— 普通 Redis 没有 RediSearch 模块，无法建向量索引。本机映射端口为 <strong>26379</strong>。</li>
+    <li><strong>Python 依赖</strong>：langchain 系 + 两个向量库集成包。注意 <code class="inline">langchain-redis</code> 要求 Python 3.10–3.13，本案例运行在 conda <code class="inline">zeroai</code> 环境（3.10.21）。</li>
+  </ul>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">terminal</span><span class="lang">BASH</span><button class="copy">copy</button></div>
+    <pre class="lang-bash"># 1) 启动 Redis Stack（含 RediSearch 模块）
+$ docker run -d --name redis-stack -p 26379:6379 redis/redis-stack
+  # 容器已在运行，跳过创建
+
+$ docker exec redis-stack redis-cli ping
+PONG
+
+# 2) 确认 search 模块真的加载了
+$ python check_modules.py
+Redis Stack 已加载模块: search, ReJSON, redisgears_2, RedisCompat, timeseries, bf
+ping: True
+FT._LIST: ['ollama_rag_demo', 'my_index11']
+
+# 3) 拉取模型
+$ ollama list
+NAME                     ID              SIZE      MODIFIED
+embeddinggemma:latest    85462619ee72    621 MB    37 hours ago
+llama3.2:latest          a80c4f17acd5    2.0 GB    43 hours ago
+
+# 4) 安装依赖
+$ pip install langchain langchain-ollama langchain-redis langchain-milvus milvus-lite</pre>
+  </div>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">实际安装版本（pip list）</span><span class="lang">ENV</span><button class="copy">copy</button></div>
+    <pre class="lang-out">Python           : 3.10.21
+langchain         : 1.4.0
+langchain-core    : 1.6.2
+langchain-ollama  : 1.1.0
+langchain-redis   : 0.2.5
+langchain-milvus  : 0.4.0
+langchain-text-splitters: 1.1.2
+pymilvus          : 3.0.2
+milvus-lite       : 3.2.1
+redis             : 5.3.1
+redisvl           : 0.26.0
+numpy             : 2.2.6
+Ollama models     : embeddinggemma, llama3.2</pre>
+  </div>
+
+  <div class="callout">
+    <b>连接约定：</b>所有脚本共用 <code class="inline">.env</code> 中的
+    <code class="inline">REDIS_STACK_URL=redis://localhost:26379</code>、
+    嵌入模型 <code class="inline">embeddinggemma</code>、索引名 <code class="inline">ollama_rag_demo</code>，
+    抽取在 <code class="inline">common.py</code> 里（源码见附录）。
+  </div>
+</section>
+
+<!-- ============ 02 ============ -->
+<section id="s2">
+  <div class="sec-head">
+    <div class="sec-num">02</div>
+    <h2>Step 1 · 把文字变成 768 维向量</h2>
+    <span class="tag">EMBED</span>
+  </div>
+
+  <div class="principle">
+    <div class="p-label">PRINCIPLE</div>
+    <h4>两个方法，两种用途</h4>
+    <p><code class="inline">embed_query(问题)</code> —— 查询时用，把用户提问变成向量；
+    <code class="inline">embed_documents([文本…])</code> —— 入库时用，批量把语料变成向量。
+    两者底层调用 Ollama 的同一个 <code class="inline">/api/embed</code> 接口，
+    产出的向量处于同一空间，因此可以直接比对。注意：<strong>向量维度由模型决定</strong>，
+    它必须与向量库索引声明的维度一致，换模型就要重建索引（见坑 #1）。</p>
+  </div>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">01_embeddings_basics.py</span><span class="lang">PYTHON</span><button class="copy">copy</button></div>
+    <pre class="lang-py">"""Step 1：认识 OllamaEmbeddings —— 文本如何变成 768 维向量。"""
+
+import numpy as np
+
+from common import EMBED_MODEL, banner, get_embeddings
+
+banner(f"Step 1  OllamaEmbeddings 基础（模型: {EMBED_MODEL}）")
+
+embeddings = get_embeddings()
+
+text = "LangChain 是一个用于构建上下文感知推理应用的框架"
+vector = embeddings.embed_query(text)
+print(f"\n[1] embed_query 单条文本")
+print(f"    文本: {text}")
+print(f"    向量维度: {len(vector)}")
+print(f"    前 8 维: {[round(v, 4) for v in vector[:8]]}")
+
+texts = ["我喜欢吃苹果", "苹果是我喜欢的水果", "我喜欢苹果手机"]
+doc_vectors = embeddings.embed_documents(texts)
+print(f"\n[2] embed_documents 批量文本")
+print(f"    返回向量条数: {len(doc_vectors)}，每条维度: {len(doc_vectors[0])}")
+
+
+def cosine_similarity(a, b) -> float:
+    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+
+
+print("\n[3] 两两余弦相似度（越接近 1 越相似）")
+for i in range(len(texts)):
+    for j in range(i + 1, len(texts)):
+        score = cosine_similarity(doc_vectors[i], doc_vectors[j])
+        print(f"    文本{i + 1} vs 文本{j + 1}: {score:.4f}   "
+              f"「{texts[i]}」 ↔ 「{texts[j]}」")</pre>
+  </div>
+
+  <div class="block">
+    <div class="real-stamp">● REAL OUTPUT</div>
+    <div class="block-bar"><span class="dot"></span><span class="fname">01_embeddings_basics.log</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">================================================================
+  Step 1  OllamaEmbeddings 基础（模型: embeddinggemma）
+================================================================
+
+[1] embed_query 单条文本
+    文本: LangChain 是一个用于构建上下文感知推理应用的框架
+    向量维度: 768
+    前 8 维: [-0.0961, -0.0076, 0.0383, 0.0361, 0.0304, 0.0182, -0.0357, 0.0273]
+
+[2] embed_documents 批量文本
+    返回向量条数: 3，每条维度: 768
+
+[3] 两两余弦相似度（越接近 1 越相似）
+    文本1 vs 文本2: 0.9259   「我喜欢吃苹果」 ↔ 「苹果是我喜欢的水果」
+    文本1 vs 文本3: 0.7834   「我喜欢吃苹果」 ↔ 「我喜欢苹果手机」
+    文本2 vs 文本3: 0.7998   「苹果是我喜欢的水果」 ↔ 「我喜欢苹果手机」</pre>
+  </div>
+
+  <p><strong>读结果：</strong>0.9259 ≫ 0.7834，模型确实按「语义」而非「字面」打分 ——
+  虽然三句话都含「苹果」二字，「苹果手机」那句仍被明显拉开距离。这就是后续检索能工作的根基。</p>
+</section>
+
+<!-- ============ 03 ============ -->
+<section id="s3">
+  <div class="sec-head">
+    <div class="sec-num">03</div>
+    <h2>Step 2 · 切分：检索单位是 chunk 不是整篇</h2>
+    <span class="tag">SPLIT</span>
+  </div>
+
+  <div class="principle">
+    <div class="p-label">PRINCIPLE</div>
+    <h4>chunk_size 与 chunk_overlap</h4>
+    <p>整篇文章嵌入成一个向量会把主题稀释掉；切成太碎又会拦腰截断语义。
+    <code class="inline">RecursiveCharacterTextSplitter</code> 按分隔符优先级
+    （<code class="inline">\n\n → \n → 。 → ，</code>）递归切分：
+    <code class="inline">chunk_size=200</code> 限制单块长度，
+    <code class="inline">chunk_overlap=40</code> 让相邻块首尾重叠，保证跨边界的关键信息不丢。</p>
+  </div>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">02_text_split.py</span><span class="lang">PYTHON</span><button class="copy">copy</button></div>
+    <pre class="lang-py">"""Step 2：文档切分 —— 长文章如何变成适合入库的 chunk。"""
+
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from common import LONG_ARTICLE, banner
+
+banner("Step 2  RecursiveCharacterTextSplitter 文档切分")
+
+print(f"\n[1] 原始文章长度: {len(LONG_ARTICLE)} 字符")
+
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=200,
+    chunk_overlap=40,
+    separators=["\n\n", "\n", "。", "，", ""],
+)
+chunks = splitter.split_text(LONG_ARTICLE)
+
+print(f"[2] 切分参数: chunk_size=200, chunk_overlap=40")
+print(f"[3] 切分结果: 共 {len(chunks)} 个 chunk")
+print()
+for i, chunk in enumerate(chunks):
+    preview = chunk.replace("\n", "⏎")
+    print(f"    #{i + 1:>2}  长度={len(chunk):>3}  {preview[:52]}...")</pre>
+  </div>
+
+  <div class="block">
+    <div class="real-stamp">● REAL OUTPUT</div>
+    <div class="block-bar"><span class="dot"></span><span class="fname">02_text_split.log</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">================================================================
+  Step 2  RecursiveCharacterTextSplitter 文档切分
+================================================================
+
+[1] 原始文章长度: 799 字符
+[2] 切分参数: chunk_size=200, chunk_overlap=40
+[3] 切分结果: 共 5 个 chunk
+
+    # 1  长度=151  本地检索增强生成（RAG）技术栈完整解析⏎⏎第一部分：为什么需要 RAG。⏎大语言模型的知识停留在训练截...
+    # 2  长度=189  第二部分：嵌入模型的选择。⏎嵌入模型把文本映射为固定长度的数值向量，语义相近的文本在向量空间中彼此靠近。...
+    # 3  长度=189  第三部分：向量数据库的职责。⏎原始文本经过切分后逐段计算向量，向量库负责存储这些向量并支持近似最近邻检索...
+    # 4  长度=117  第四部分：切分策略的影响。⏎切分过粗会引入无关信息稀释上下文，切分过细则可能把完整语义拦腰截断。⏎常用做...
+    # 5  长度=145  第五部分：完整工程链路。⏎文档进入系统后依次经过加载、切分、嵌入、入库四个步骤写入向量库；⏎用户提问时先...</pre>
+  </div>
+</section>
+
+<!-- ============ 04 ============ -->
+<section id="s4">
+  <div class="sec-head">
+    <div class="sec-num">04</div>
+    <h2>Step 3 · 写入 Redis Stack 并检索</h2>
+    <span class="tag">CORE</span>
+  </div>
+
+  <div class="principle">
+    <div class="p-label">PRINCIPLE</div>
+    <h4>RedisConfig 的五个关键参数</h4>
+    <p><code class="inline">index_name</code> 索引名（服务端 FT._LIST 可见）；
+    <code class="inline">distance_metric="COSINE"</code> 用余弦距离；
+    <code class="inline">indexing_algorithm="FLAT"</code> 精确暴力搜索，结果与逐对计算完全一致，适合万条以内数据；
+    <code class="inline">embedding_dimensions=768</code> <strong>必须等于模型实际输出维度</strong>；
+    <code class="inline">metadata_schema</code> 把 <code class="inline">source/category</code> 声明为 tag 字段，
+    才能在检索时做 <strong>预过滤</strong>（先缩小候选集，再做 KNN）。</p>
+  </div>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">03_redis_store.py</span><span class="lang">PYTHON</span><button class="copy">copy</button></div>
+    <pre class="lang-py">"""Step 3：把向量写入 Redis Stack 并做相似度检索（含元数据过滤）。"""
+
+from langchain_redis import RedisConfig, RedisVectorStore
+from redisvl.query.filter import Tag
+
+from common import (
+    EMBED_MODEL,
+    INDEX_NAME,
+    REDIS_URL,
+    banner,
+    build_documents,
+    get_embeddings,
+    reset_redis_index,
+)
+
+banner("Step 3  RedisVectorStore 写入与检索")
+
+removed = reset_redis_index(INDEX_NAME)
+print(f"\n[0] 清理旧索引 {INDEX_NAME}: {'已删除' if removed else '首次创建'}")
+
+config = RedisConfig(
+    index_name=INDEX_NAME,
+    redis_url=REDIS_URL,
+    distance_metric="COSINE",
+    indexing_algorithm="FLAT",
+    embedding_dimensions=768,
+    metadata_schema=[{"name": "source", "type": "tag"}, {"name": "category", "type": "tag"}],
+)
+store = RedisVectorStore(embeddings=get_embeddings(), config=config)
+
+docs = build_documents()
+keys = store.add_documents(docs)
+print(f"[1] 写入 {len(docs)} 条文档，索引: {INDEX_NAME}，key 前缀: {store.key_prefix}")
+print(f"    返回 keys 示例: {keys[:2]}")
+
+query = "怎么在本地跑一个嵌入模型？"
+print(f"\n[2] 相似度检索: 「{query}」 (k=3, COSINE 距离越小越相似)")
+for doc, score in store.similarity_search_with_score(query, k=3):
+    print(f"    距离={score:.4f}  相似度≈{1 - score:.4f}  "
+          f"[{doc.metadata['category']}] {doc.page_content}")
+
+print(f"\n[3] 元数据过滤: 只在 category='向量数据库' 中检索")
+filt = Tag("category") == "向量数据库"
+for doc, score in store.similarity_search_with_score(query, k=3, filter=filt):
+    print(f"    距离={score:.4f}  [{doc.metadata['category']}] {doc.page_content}")
+
+print(f"\n[4] 索引里现在有哪些? (redis FT._LIST)")
+from common import get_redis_client
+
+client = get_redis_client()
+print(f"    {client.execute_command('FT._LIST')}")
+info = client.ft(INDEX_NAME).info()
+stats = {k: info[k] for k in info if "doc" in k.lower() or "num" in k.lower()}
+print(f"    FT.INFO 关键统计: {stats}")</pre>
+  </div>
+
+  <div class="block">
+    <div class="real-stamp">● REAL OUTPUT</div>
+    <div class="block-bar"><span class="dot"></span><span class="fname">03_redis_store.log</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">================================================================
+  Step 3  RedisVectorStore 写入与检索
+================================================================
+
+[0] 清理旧索引 ollama_rag_demo: 已删除
+[1] 写入 16 条文档，索引: ollama_rag_demo，key 前缀: ollama_rag_demo
+    返回 keys 示例: ['ollama_rag_demo:01M3ZR0KD8C53YPM7CCSVRF22W', 'ollama_rag_demo:01M3ZR0KD8C53YPM7CCSVRF22X']
+
+[2] 相似度检索: 「怎么在本地跑一个嵌入模型？」 (k=3, COSINE 距离越小越相似)
+    距离=0.4695  相似度≈0.5305  [推理框架] Ollama 是一个本地大模型推理服务，默认监听 11434 端口，通过 ollama pull 命令可以把模型下载到本地后离线运行。
+    距离=0.5002  相似度≈0.4998  [应用模式] 本地化 RAG 的完整链路是：Ollama 跑嵌入模型生成向量，Redis Stack 或 Milvus 负责存储与检索向量，LangChain 负责编排整个流程。
+    距离=0.5287  相似度≈0.4713  [嵌入模型] embeddinggemma 是 Google 开源的轻量文本嵌入模型，在 Ollama 中输出 768 维向量，适合中文语义检索场景。
+
+[3] 元数据过滤: 只在 category='向量数据库' 中检索
+    距离=0.6194  [向量数据库] Milvus 是专为向量检索设计的分布式数据库，Milvus Lite 可以直接以本地 .db 文件形式运行，无需启动任何服务即可完成原型验证。
+    距离=0.6909  [向量数据库] Redis Stack 在开源 Redis 之上增加了 RediSearch 模块，支持 HNSW 向量索引、元数据过滤与 KNN 近邻检索，可以直接把 Redis 当向量库使用。
+    距离=0.7690  [向量数据库] 对话历史持久化常用 Redis 存储，LangChain 的 RedisChatMessageHistory 会按 session_id 为每个会话保留独立的消息列表，并支持设置过期时间。
+
+[4] 索引里现在有哪些? (redis FT._LIST)
+    ['ollama_rag_demo', 'my_index11']
+    FT.INFO 关键统计: {'num_docs': 16, 'max_doc_id': 16, 'num_terms': 117, 'num_records': 275, 'doc_table_size_mb': '0.016998291015625', 'records_per_doc_avg': '17.1875', 'number_of_uses': 3}</pre>
+  </div>
+
+  <p><strong>读结果：</strong>注意两条线。其一，无过滤时 top1 是「Ollama 本地推理」（距离 0.4695），
+  语义精准命中问题中的「本地跑嵌入模型」；其二，加上 <code class="inline">Tag("category")=="向量数据库"</code>
+  后，三条结果<strong>全部</strong>来自该类别，距离整体变大（0.61~0.77）——
+  因为候选集被强制限定，这正是预过滤的预期行为。</p>
+  <p><code class="inline">FT.INFO</code> 显示 <strong>num_docs: 16</strong>、num_records: 275，
+  说明数据已由 RediSearch 在<strong>服务端</strong>建好索引，与客户端进程无关。</p>
+</section>
+
+<!-- ============ 05 ============ -->
+<section id="s5">
+  <div class="sec-head">
+    <div class="sec-num">05</div>
+    <h2>Step 4 · 持久化证明：只连不写，照样查得到</h2>
+    <span class="tag">PROOF</span>
+  </div>
+
+  <div class="principle">
+    <div class="p-label">PRINCIPLE</div>
+    <h4>from_existing=True 是关键开关</h4>
+    <p>新建索引时库会执行 <code class="inline">FT.CREATE</code>；而
+    <code class="inline">from_existing=True</code> 表示「索引已存在，直接挂载」，
+    <strong>绝不写入任何数据</strong>。因此只要这个只读进程还能检索到内容，
+    数据就必然来自 Redis 服务端的落盘存储，而非内存残留。本步给出三重证据：
+    新进程检索、服务端 <code class="inline">FT.INFO</code> 统计、以及再开一个子解释器独立查询。</p>
+  </div>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">04_persistence_check.py</span><span class="lang">PYTHON</span><button class="copy">copy</button></div>
+    <pre class="lang-py">"""Step 4：持久化验证 —— 全新进程只连不写，依然能检索到数据。"""
+
+import subprocess
+import sys
+
+from langchain_redis import RedisConfig, RedisVectorStore
+
+from common import (
+    INDEX_NAME,
+    REDIS_URL,
+    banner,
+    get_embeddings,
+    get_redis_client,
+)
+
+banner("Step 4  持久化验证（新进程只读，不写入任何数据）")
+
+config = RedisConfig(
+    index_name=INDEX_NAME,
+    redis_url=REDIS_URL,
+    from_existing=True,
+    distance_metric="COSINE",
+    indexing_algorithm="FLAT",
+    embedding_dimensions=768,
+)
+store = RedisVectorStore(embeddings=get_embeddings(), config=config)
+print(f"\n[1] 以 from_existing=True 打开已存在的索引: {INDEX_NAME}")
+print(f"    本进程没有调用 add_documents，数据只能来自 Redis 落盘")
+
+query = "向量数据重启后还在吗？"
+print(f"\n[2] 新进程直接检索: 「{query}」")
+for doc, score in store.similarity_search_with_score(query, k=2):
+    print(f"    距离={score:.4f}  {doc.page_content}")
+
+client = get_redis_client()
+info = client.ft(INDEX_NAME).info()
+print(f"\n[3] Redis 服务端索引统计（证明数据在服务端持久保存）")
+for key in ["index_name", "num_docs", "num_records", "hash_indexing_failures"]:
+    if key in info:
+        print(f"    {key}: {info[key]}")
+
+print(f"\n[4] 对比重实验：另一个解释器进程独立执行一次检索")
+code = (
+    "from langchain_redis import RedisConfig, RedisVectorStore;\n"
+    "from common import get_embeddings, INDEX_NAME, REDIS_URL;\n"
+    "cfg = RedisConfig(index_name=INDEX_NAME, redis_url=REDIS_URL, from_existing=True,"
+    " embedding_dimensions=768);\n"
+    "s = RedisVectorStore(embeddings=get_embeddings(), config=cfg);\n"
+    "d, sc = s.similarity_search_with_score('Redis 怎么做向量检索', k=1)[0];\n"
+    "print('    [子进程] top1 距离=%.4f  %s' % (sc, d.page_content))"
+)
+result = subprocess.run(
+    [sys.executable, "-c", code],
+    capture_output=True,
+    text=True,
+    cwd=str(__import__("common").PROJECT_ROOT / "rag_ollama_persistence"),
+)
+print(result.stdout.strip() or result.stderr.strip())</pre>
+  </div>
+
+  <div class="block">
+    <div class="real-stamp">● REAL OUTPUT</div>
+    <div class="block-bar"><span class="dot"></span><span class="fname">04_persistence_check.log</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">================================================================
+  Step 4  持久化验证（新进程只读，不写入任何数据）
+================================================================
+
+[1] 以 from_existing=True 打开已存在的索引: ollama_rag_demo
+    本进程没有调用 add_documents，数据只能来自 Redis 落盘
+
+[2] 新进程直接检索: 「向量数据重启后还在吗？」
+    距离=0.4563  向量一旦落盘就具备持久化能力，程序重启甚至换一台机器，只要连上同一个 Redis 或 Milvus 实例就能继续检索，无需重新计算嵌入。
+    距离=0.6460  向量检索支持元数据过滤，例如先按 category 等于向量数据库缩小候选范围，再在候选集合内做 KNN 检索，可以让结果更精准。
+
+[3] Redis 服务端索引统计（证明数据在服务端持久保存）
+    index_name: ollama_rag_demo
+    num_docs: 16
+    num_records: 275
+    hash_indexing_failures: 0
+
+[4] 对比重实验：另一个解释器进程独立执行一次检索
+[子进程] top1 距离=0.3525  Redis Stack 在开源 Redis 之上增加了 RediSearch 模块，支持 HNSW 向量索引、元数据过滤与 KNN 近邻检索，可以直接把 Redis 当向量库使用。</pre>
+  </div>
+
+  <p><strong>读结果：</strong>三重证据链闭合 —— 主进程查得到、服务端报告 <strong>num_docs: 16</strong>
+  且 <strong>hash_indexing_failures: 0</strong>（零写入失败）、子进程 <code class="inline">python -c</code>
+  再查一次 top1 距离仅 0.3525。数据确实躺在 Redis 里，与任何客户端生命周期无关。</p>
+</section>
+
+<!-- ============ 06 ============ -->
+<section id="s6">
+  <div class="sec-head">
+    <div class="sec-num">06</div>
+    <h2>Step 5 · 完整 RAG 链：检索 + 生成</h2>
+    <span class="tag">RAG</span>
+  </div>
+
+  <div class="principle">
+    <div class="p-label">PRINCIPLE</div>
+    <h4>用 LCEL 把两条支线合成一条管道</h4>
+    <p><code class="inline">retriever | format_docs</code> 是<strong>检索支线</strong>：
+    取 top-3 片段并拼成上下文字符串；<code class="inline">lambda x: x</code> 是
+    <strong>透传支线</strong>：把原问题原样送进提示词。两者在字典
+    <code class="inline">{"context": …, "question": …}</code> 中并行执行，
+    再依次流经 Prompt → <code class="inline">ChatOllama(llama3.2)</code> →
+    <code class="inline">StrOutputParser</code>。提示词里写死「仅根据参考资料回答」，
+    是抑制幻觉最简单有效的手段。</p>
+  </div>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">05_rag_chain.py</span><span class="lang">PYTHON</span><button class="copy">copy</button></div>
+    <pre class="lang-py">"""Step 5：完整 RAG 链 —— 检索 Redis Stack + Ollama 大模型生成回答。"""
+
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_redis import RedisConfig, RedisVectorStore
+
+from common import (
+    CHAT_MODEL,
+    INDEX_NAME,
+    REDIS_URL,
+    banner,
+    get_chat_model,
+    get_embeddings,
+)
+
+banner("Step 5  RAG 链：Redis 检索 + Ollama 生成")
+
+config = RedisConfig(
+    index_name=INDEX_NAME,
+    redis_url=REDIS_URL,
+    from_existing=True,
+    distance_metric="COSINE",
+    indexing_algorithm="FLAT",
+    embedding_dimensions=768,
+)
+store = RedisVectorStore(embeddings=get_embeddings(), config=config)
+retriever = store.as_retriever(search_kwargs={"k": 3})
+
+
+def format_docs(docs) -> str:
+    return "\n\n".join(
+        f"[{d.metadata.get('category', '-')}] {d.page_content}" for d in docs
+    )
+
+
+prompt = ChatPromptTemplate.from_template(
+    "你是 RAG 助手。请仅根据下方参考资料回答问题，"
+    "若资料中没有答案就直说不知道。\n\n"
+    "参考资料：\n{context}\n\n问题：{question}"
+)
+
+chain = (
+    {"context": retriever | format_docs, "question": lambda x: x}
+    | prompt
+    | get_chat_model()
+    | StrOutputParser()
+)
+
+for question in [
+    "Redis 是怎么做向量检索的？",
+    "本地跑嵌入模型应该用什么工具？",
+]:
+    print(f"\n[问题] {question}")
+    docs = retriever.invoke(question)
+    print("[检索到的 top-3 片段]")
+    for i, d in enumerate(docs, 1):
+        print(f"    {i}. [{d.metadata.get('category')}] {d.page_content}")
+    print(f"[生成模型] {CHAT_MODEL}")
+    print("[回答]")
+    answer = chain.invoke(question)
+    for line in answer.splitlines():
+        print(f"    {line}")</pre>
+  </div>
+
+  <div class="block">
+    <div class="real-stamp">● REAL OUTPUT</div>
+    <div class="block-bar"><span class="dot"></span><span class="fname">05_rag_chain.log</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">================================================================
+  Step 5  RAG 链：Redis 检索 + Ollama 生成
+================================================================
+
+[问题] Redis 是怎么做向量检索的？
+[检索到的 top-3 片段]
+    1. [向量数据库] Redis Stack 在开源 Redis 之上增加了 RediSearch 模块，支持 HNSW 向量索引、元数据过滤与 KNN 近邻检索，可以直接把 Redis 当向量库使用。
+    2. [应用模式] 向量一旦落盘就具备持久化能力，程序重启甚至换一台机器，只要连上同一个 Redis 或 Milvus 实例就能继续检索，无需重新计算嵌入。
+    3. [应用模式] 向量检索支持元数据过滤，例如先按 category 等于向量数据库缩小候选范围，再在候选集合内做 KNN 检索，可以让结果更精准。
+[生成模型] llama3.2:latest
+[回答]
+    根据参考资料，Redis 在开源 Redis 之上增加了 RediSearch 模块，支持 HNSW 向量索引、元数据过滤与 KNN 近邻检索。
+
+[问题] 本地跑嵌入模型应该用什么工具？
+[检索到的 top-3 片段]
+    1. [应用模式] 本地化 RAG 的完整链路是：Ollama 跑嵌入模型生成向量，Redis Stack 或 Milvus 负责存储与检索向量，LangChain 负责编排整个流程。
+    2. [推理框架] Ollama 是一个本地大模型推理服务，默认监听 11434 端口，通过 ollama pull 命令可以把模型下载到本地后离线运行。
+    3. [嵌入模型] embeddinggemma 是 Google 开源的轻量文本嵌入模型，在 Ollama 中输出 768 维向量，适合中文语义检索场景。
+[生成模型] llama3.2:latest
+[回答]
+    根据参考资料，Ollama 提供了一个本地大模型推理服务，可以通过 ollama pull 命令下载模型到本地后离线运行。因此，本地跑嵌入模型应该使用 Ollama。</pre>
+  </div>
+
+  <p><strong>读结果：</strong>两处细节值得注意 —— ① 每个回答都以「根据参考资料」开头，
+  说明提示词约束生效，模型在引用检索结果而非自由发挥；
+  ② 第二问的 top-3 全部落在「本地化」相关条目上，与 Step 3 的裸检索结果一致，
+  证明检索支线稳定复现。全程零外网请求：嵌入、检索、生成均在本机完成。</p>
+</section>
+
+<!-- ============ 07 ============ -->
+<section id="s7">
+  <div class="sec-head">
+    <div class="sec-num">07</div>
+    <h2>Step 6 · Milvus Lite 对照方案</h2>
+    <span class="tag">COMPARE</span>
+  </div>
+
+  <div class="principle teal">
+    <div class="p-label">PRINCIPLE · 关键差异</div>
+    <h4>得分方向正好相反</h4>
+    <p>同一份语料、同一个查询、同一个模型，两个库给出的数值互为镜像：
+    Redis <code class="inline">similarity_search_with_score</code> 返回 <strong>COSINE 距离（越小越相似）</strong>，
+    top1 为 <code class="inline">0.4695</code>；Milvus 在 <code class="inline">metric_type="COSINE"</code>
+    下返回 <strong>相似度（越大越相似）</strong>，同一条文档得 <code class="inline">0.5305</code> ——
+    两者相加恰好为 1。做跨库结果融合或调阈值时，这个方向差异必须先统一。</p>
+    <p>另外，Milvus 用 <code class="inline">enable_dynamic_field=True</code> 后元数据成为动态字段，
+    过滤表达式写成 <code class="inline">expr='category == "向量数据库"'</code>；
+    Redis 则用 redisvl 的 <code class="inline">Tag("category") == "…"</code> 对象。语法不同，语义等价。</p>
+  </div>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">06_milvus_lite.py</span><span class="lang">PYTHON</span><button class="copy">copy</button></div>
+    <pre class="lang-py">"""Step 6：对照方案 —— 同一份语料写入 Milvus Lite（本地 .db 文件）。"""
+
+import shutil
+from pathlib import Path
+
+from langchain_milvus import Milvus
+
+from common import (
+    EMBED_MODEL,
+    MILVUS_DB_PATH,
+    banner,
+    build_documents,
+    get_embeddings,
+)
+
+banner("Step 6  Milvus Lite 对照方案（本地文件持久化）")
+
+db_path = Path(MILVUS_DB_PATH)
+if db_path.exists():
+    shutil.rmtree(db_path)
+    print(f"\n[0] 删除旧的 Milvus Lite 数据目录: {db_path.name}/")
+
+store = Milvus(
+    embedding_function=get_embeddings(),
+    connection_args={"uri": str(db_path)},
+    collection_name="ollama_rag_demo",
+    index_params={"index_type": "FLAT", "metric_type": "COSINE"},
+    enable_dynamic_field=True,
+    auto_id=True,
+)
+
+docs = build_documents()
+store.add_documents(docs)
+print(f"[1] 写入 {len(docs)} 条文档到 {db_path.name}")
+
+query = "怎么在本地跑一个嵌入模型？"
+print(f"\n[2] 相似度检索: 「{query}」 (k=3)")
+print("    注意: Milvus COSINE 返回的是相似度，越大越相似（与 Redis 距离相反）")
+for doc, score in store.similarity_search_with_score(query, k=3):
+    print(f"    相似度={score:.4f}  "
+          f"[{doc.metadata.get('category')}] {doc.page_content}")
+
+print(f"\n[3] 元数据过滤: expr='category == \"向量数据库\"'（动态字段可直接按名过滤）")
+for doc, score in store.similarity_search_with_score(
+    query, k=3, expr='category == "向量数据库"'
+):
+    print(f"    相似度={score:.4f}  [{doc.metadata.get('category')}] {doc.page_content}")
+
+print(f"\n[4] 持久化证明：重新打开（模拟新进程），只连不写")
+store2 = Milvus(
+    embedding_function=get_embeddings(),
+    connection_args={"uri": str(db_path)},
+    collection_name="ollama_rag_demo",
+    enable_dynamic_field=True,
+)
+doc, score = store2.similarity_search_with_score("RAG 是什么", k=1)[0]
+print(f"    相似度={score:.4f}  {doc.page_content}")
+total = sum(f.stat().st_size for f in db_path.rglob("*") if f.is_file())
+print(f"    落盘数据目录: {db_path.name}/（共 {total} 字节，新进程只连不写仍可检索）")
+
+print("\n[5] 两种持久化方案对比")
+print("    " + "-" * 60)
+print(f"    {'维度':<14}{'Redis Stack':<24}{'Milvus Lite':<22}")
+print("    " + "-" * 60)
+rows = [
+    ("形态", "服务端数据库(Docker)", "本地数据目录 .db/"),
+    ("依赖", "RediSearch 模块", "pymilvus + milvus-lite"),
+    ("多进程共享", "支持(网络访问)", "单机文件锁"),
+    ("适用场景", "生产/已有Redis基建", "原型验证/离线单机"),
+    ("得分方向", "距离 越小越相似", "相似度 越大越相似"),
+    ("嵌入模型", f"Ollama {EMBED_MODEL}", f"Ollama {EMBED_MODEL}"),
+]
+for name, a, b in rows:
+    print(f"    {name:<14}{a:<24}{b:<22}")
+print("    " + "-" * 60)</pre>
+  </div>
+
+  <div class="block">
+    <div class="real-stamp">● REAL OUTPUT</div>
+    <div class="block-bar"><span class="dot"></span><span class="fname">06_milvus_lite.log</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">================================================================
+  Step 6  Milvus Lite 对照方案（本地文件持久化）
+================================================================
+
+[0] 删除旧的 Milvus Lite 数据目录: milvus_rag_demo.db/
+[1] 写入 16 条文档到 milvus_rag_demo.db
+
+[2] 相似度检索: 「怎么在本地跑一个嵌入模型？」 (k=3)
+    注意: Milvus COSINE 返回的是相似度，越大越相似（与 Redis 距离相反）
+    相似度=0.5305  [推理框架] Ollama 是一个本地大模型推理服务，默认监听 11434 端口，通过 ollama pull 命令可以把模型下载到本地后离线运行。
+    相似度=0.4998  [应用模式] 本地化 RAG 的完整链路是：Ollama 跑嵌入模型生成向量，Redis Stack 或 Milvus 负责存储与检索向量，LangChain 负责编排整个流程。
+    相似度=0.4713  [嵌入模型] embeddinggemma 是 Google 开源的轻量文本嵌入模型，在 Ollama 中输出 768 维向量，适合中文语义检索场景。
+
+[3] 元数据过滤: expr='category == "向量数据库"'（动态字段可直接按名过滤）
+    相似度=0.3806  [向量数据库] Milvus 是专为向量检索设计的分布式数据库，Milvus Lite 可以直接以本地 .db 文件形式运行，无需启动任何服务即可完成原型验证。
+    相似度=0.3091  [向量数据库] Redis Stack 在开源 Redis 之上增加了 RediSearch 模块，支持 HNSW 向量索引、元数据过滤与 KNN 近邻检索，可以直接把 Redis 当向量库使用。
+    相似度=0.2310  [向量数据库] 对话历史持久化常用 Redis 存储，LangChain 的 RedisChatMessageHistory 会按 session_id 为每个会话保留独立的消息列表，并支持设置过期时间。
+
+[4] 持久化证明：重新打开（模拟新进程），只连不写
+    相似度=0.4611  RAG 检索增强生成的思路是：先从向量库检索与问题相关的文档片段，再把片段拼进提示词交给大模型，从而减少幻觉并支持知识更新。
+    落盘数据目录: milvus_rag_demo.db/（共 55665 字节，新进程只连不写仍可检索）
+
+[5] 两种持久化方案对比
+    ------------------------------------------------------------
+    维度            Redis Stack             Milvus Lite
+    ------------------------------------------------------------
+    形态            服务端数据库(Docker)          本地数据目录 .db/
+    依赖            RediSearch 模块           pymilvus + milvus-lite
+    多进程共享         支持(网络访问)                单机文件锁
+    适用场景          生产/已有Redis基建            原型验证/离线单机
+    得分方向          距离 越小越相似                相似度 越大越相似
+    嵌入模型          Ollama embeddinggemma   Ollama embeddinggemma
+    ------------------------------------------------------------</pre>
+  </div>
+
+  <p><strong>读结果：</strong>两个库的 top-3 排序<strong>完全一致</strong>
+  （Ollama 本地推理 → 本地化 RAG 链路 → embeddinggemma），
+  只是数值互为 1 − x。这说明差异只来自「得分方向」的约定，而非检索质量 ——
+  换库不会改变谁排第一。持久化同样成立：新对象只连不写，55665 字节数据目录照常响应查询。</p>
+</section>
+
+<!-- ============ 08 选型 ============ -->
+<section id="s8">
+  <div class="sec-head">
+    <div class="sec-num">08</div>
+    <h2>选型对比：Redis Stack vs Milvus</h2>
+    <span class="tag">DECIDE</span>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>维度</th><th>Redis Stack（本教程主线）</th><th>Milvus Lite（对照）</th><th>Milvus Server（生产）</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>部署形态</td><td>Docker 容器，端口 26379</td><td>本地数据目录 <code class="inline">.db/</code>，零服务</td><td>Docker / K8s 集群</td></tr>
+        <tr><td>核心依赖</td><td>RediSearch 模块（redis-stack 镜像自带）</td><td>pymilvus + milvus-lite</td><td>pymilvus + 服务端</td></tr>
+        <tr><td>客户端包</td><td><code class="inline">langchain-redis</code></td><td colspan="2"><code class="inline">langchain-milvus</code></td></tr>
+        <tr><td>过滤语法</td><td>redisvl <code class="inline">Tag("category")=="…"</code></td><td colspan="2">表达式 <code class="inline">expr='category=="…"'</code></td></tr>
+        <tr><td>得分方向</td><td><b class="red">距离 · 越小越相似</b></td><td colspan="2"><b class="red">COSINE 相似度 · 越大越相似</b></td></tr>
+        <tr><td>多进程/多服务共享</td><td>✅ 网络访问，天然共享</td><td>⚠️ 单机文件锁</td><td>✅ 分布式共享</td></tr>
+        <tr><td>索引算法</td><td>FLAT / HNSW</td><td>FLAT（Lite 受限）</td><td>FLAT / HNSW / IVF / DiskANN…</td></tr>
+        <tr><td>适用场景</td><td>已有 Redis 基建、要与缓存/会话历史共用一套存储</td><td>离线原型、笔记本快速验证</td><td>千万级以上向量、多租户</td></tr>
+        <tr><td>本教程实测</td><td>16 docs · FT.INFO num_docs=16 · top1 距离 0.4695</td><td>16 docs · 55665 字节 · top1 相似度 0.5305</td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <b>怎么选：</b>如果你已经用 Redis 存会话历史（<code class="inline">RedisChatMessageHistory</code>）
+    或做语义缓存，向量也放 Redis Stack 最省事 —— 一套基建三种用途；
+    如果要从零建一个纯向量检索服务、未来可能上量到千万级，直接 Milvus。
+    两边的 LangChain 接口高度相似，<b>切换成本只在初始化的十几行代码</b>。
+  </div>
+</section>
+
+<!-- ============ 09 坑 ============ -->
+<section id="s9">
+  <div class="sec-head">
+    <div class="sec-num">09</div>
+    <h2>常见坑：踩过的都写在这</h2>
+    <span class="tag">PITFALLS</span>
+  </div>
+
+  <div class="pitfall"><div class="no">1</div><div class="body">
+    <h5>维度必须与索引声明一致</h5>
+    <p><code class="inline">embedding_dimensions=768</code> 是写死给索引看的。换成 <code class="inline">nomic-embed-text</code>（768）之外的模型（如 1024 维模型）后，旧索引会直接报维度不匹配 —— 正确做法是先 <code class="inline">drop index</code> 再重建，本教程的 <code class="inline">reset_redis_index()</code> 就是为此准备的。</p>
+  </div></div>
+
+  <div class="pitfall"><div class="no">2</div><div class="body">
+    <h5>必须用 redis/redis-stack 镜像</h5>
+    <p>普通 <code class="inline">redis:7</code> 镜像没有 RediSearch 模块，建索引时报 <code class="inline">unknown command 'FT.CREATE'</code>。启动后用 <code class="inline">MODULE LIST</code> 确认存在 <code class="inline">search</code>。</p>
+  </div></div>
+
+  <div class="pitfall"><div class="no">3</div><div class="body">
+    <h5>langchain-redis 不支持 Python 3.14</h5>
+    <p>其 <code class="inline">requires_python = &lt;3.14,&gt;=3.10</code>。本项目 <code class="inline">requirements.txt</code> 也注明需 3.10–3.13，故使用 conda <code class="inline">zeroai</code>（3.10.21）环境运行。</p>
+  </div></div>
+
+  <div class="pitfall"><div class="no">4</div><div class="body">
+    <h5>废弃 API：langchain_community.vectorstores.Redis</h5>
+    <p>旧写法 <code class="inline">from langchain_community.vectorstores import Redis</code> 已标记 deprecated（自 0.3.13 起），替代品是 <code class="inline">langchain_redis.RedisVectorStore</code> + <code class="inline">RedisConfig</code>，本教程全部采用新 API。</p>
+  </div></div>
+
+  <div class="pitfall"><div class="no">5</div><div class="body">
+    <h5>得分方向相反导致阈值判断出错</h5>
+    <p>把 Redis 的距离当相似度用（或反之）会让「过滤低分结果」变成「过滤高分结果」。统一做法：先转换成同向（例如全部转成 1 − 距离）再比较。</p>
+  </div></div>
+
+  <div class="pitfall"><div class="no">6</div><div class="body">
+    <h5>重复运行导致数据翻倍</h5>
+    <p><code class="inline">add_documents</code> 是追加语义。脚本若不清理，第二次运行会写入 32 条并污染检索结果。开头先 drop 索引（Step 3 已内置），或改用幂等的 <code class="inline">id</code>。</p>
+  </div></div>
+
+  <div class="pitfall"><div class="no">7</div><div class="body">
+    <h5>Milvus Lite 的 uri 是目录不是文件</h5>
+    <p>3.x 版本创建的 <code class="inline">milvus_rag_demo.db</code> 实际是一个含 <code class="inline">collections/</code>、<code class="inline">LOCK</code> 的目录，清理时要用 <code class="inline">shutil.rmtree()</code> 而非 <code class="inline">unlink()</code>。</p>
+  </div></div>
+</section>
+
+<!-- ============ 10 附录 ============ -->
+<section id="s10">
+  <div class="sec-head">
+    <div class="sec-num">10</div>
+    <h2>附录：目录结构与完整源码</h2>
+    <span class="tag">APPENDIX</span>
+  </div>
+
+  <div class="tree">
+<b>rag_ollama_persistence/</b>
+├── common.py                  <span class="dim">← 共享配置：模型、Redis URL、16 条语料、工具函数</span>
+├── 01_embeddings_basics.py    <span class="dim">← Step 1 向量与余弦相似度</span>
+├── 02_text_split.py           <span class="dim">← Step 2 文档切分</span>
+├── 03_redis_store.py          <span class="dim">← Step 3 写入 Redis Stack ★ 主线</span>
+├── 04_persistence_check.py    <span class="dim">← Step 4 持久化证明（只连不写）</span>
+├── 05_rag_chain.py            <span class="dim">← Step 5 RAG 检索+生成</span>
+├── 06_milvus_lite.py          <span class="dim">← Step 6 Milvus Lite 对照</span>
+└── milvus_rag_demo.db/        <span class="dim">← Step 6 生成的本地数据目录（55665 字节）</span>
+
+<b>一键按序重跑：</b>
+<span class="dim">for f in 0*.py; do python "$f"; done</span>
+  </div>
+
+  <h3>common.py 完整源码</h3>
+  <details open>
+    <summary>common.py · 共享配置与语料（184 行）</summary>
+    <div class="d-body"><pre class="lang-py" id="src-common"></pre></div>
+  </details>
+
+  <h3>关键命令速查</h3>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">cheatsheet</span><span class="lang">BASH</span><button class="copy">copy</button></div>
+    <pre class="lang-bash"># Redis Stack 侧
+docker exec redis-stack redis-cli FT._LIST              # 列出所有向量索引
+docker exec redis-stack redis-cli FT.INFO ollama_rag_demo  # 索引统计（num_docs 等）
+docker exec redis-stack redis-cli FT.DROPINDEX ollama_rag_demo DD  # 删索引+数据
+
+# Ollama 侧
+ollama list                                              # 已有模型
+ollama pull embeddinggemma                               # 拉取嵌入模型（768 维）
+ollama pull llama3.2                                     # 拉取生成模型
+
+# Milvus Lite 侧
+ls milvus_rag_demo.db/                                   # 本地数据目录（含 LOCK）</pre>
+  </div>
+
+  <h3>参考文档</h3>
+  <ul class="list">
+    <li><a href="https://docs.langchain.com/oss/python/integrations/embeddings/ollama" target="_blank" rel="noopener">LangChain · OllamaEmbeddings 集成文档</a></li>
+    <li><a href="https://docs.langchain.com/oss/python/integrations/vectorstores/milvus" target="_blank" rel="noopener">LangChain · Milvus 向量库文档</a></li>
+    <li><a href="https://github.com/langchain-ai/langchain-redis" target="_blank" rel="noopener">langchain-redis 官方仓库（RedisVectorStore / RedisChatMessageHistory）</a></li>
+    <li><a href="https://milvus.io/docs/milvus_lite.md" target="_blank" rel="noopener">Milvus Lite 文档</a></li>
+    <li><a href="https://ollama.com/library/embeddinggemma" target="_blank" rel="noopener">Ollama · embeddinggemma 模型页</a></li>
+  </ul>
+</section>
+
+</main>
+</div>
+
+<div class="wrap">
+  <footer>
+    <span>LANGCHAIN × OLLAMA × REDIS STACK — RAG FIELD MANUAL</span>
+    <span>ALL OUTPUTS VERIFIED BY REAL EXECUTION · 2026-10-03</span>
+  </footer>
+</div>
+
+<button id="top" title="回到顶部">↑</button>
+
+<script>
+/* ---------- 进度条 + 回顶 ---------- */
+const prog = document.getElementById('progress');
+const topBtn = document.getElementById('top');
+addEventListener('scroll', () => {
+  const h = document.documentElement;
+  const p = h.scrollTop / (h.scrollHeight - h.clientHeight);
+  prog.style.width = (p * 100) + '%';
+  topBtn.classList.toggle('show', h.scrollTop > 600);
+}, {passive: true});
+topBtn.onclick = () => scrollTo({top: 0, behavior: 'smooth'});
+
+/* ---------- TOC scrollspy ---------- */
+const tocLinks = [...document.querySelectorAll('#toc a')];
+const secs = tocLinks.map(a => document.querySelector(a.getAttribute('href')));
+const spy = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      const id = '#' + e.target.id;
+      tocLinks.forEach(a => a.classList.toggle('on', a.getAttribute('href') === id));
+    }
+  });
+}, {rootMargin: '-15% 0px -70% 0px'});
+secs.forEach(s => s && spy.observe(s));
+
+/* ---------- common.py 源码注入 ---------- */
+const COMMON_SRC = String.raw`"""共享配置：环境变量、Ollama 嵌入模型、Redis 连接与示例语料。"""
+
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+from langchain_core.documents import Document
+from langchain_ollama import ChatOllama, OllamaEmbeddings
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(PROJECT_ROOT / ".env", encoding="utf-8")
+
+REDIS_URL = os.getenv("REDIS_STACK_URL", "redis://localhost:26379")
+EMBED_MODEL = os.getenv("EMBED_MODEL", "embeddinggemma")
+CHAT_MODEL = os.getenv("LLAMA_3_2_LATEST", "llama3.2:latest")
+
+INDEX_NAME = "ollama_rag_demo"
+MILVUS_DB_PATH = str(Path(__file__).resolve().parent / "milvus_rag_demo.db")
+
+KNOWLEDGE = [
+    {
+        "text": "Ollama 是一个本地大模型推理服务，默认监听 11434 端口，"
+        "通过 ollama pull 命令可以把模型下载到本地后离线运行。",
+        "source": "doc_ollama",
+        "category": "推理框架",
+    },
+    {
+        "text": "embeddinggemma 是 Google 开源的轻量文本嵌入模型，"
+        "在 Ollama 中输出 768 维向量，适合中文语义检索场景。",
+        "source": "doc_embedding",
+        "category": "嵌入模型",
+    },
+    {
+        "text": "Redis Stack 在开源 Redis 之上增加了 RediSearch 模块，"
+        "支持 HNSW 向量索引、元数据过滤与 KNN 近邻检索，可以直接把 Redis 当向量库使用。",
+        "source": "doc_redis",
+        "category": "向量数据库",
+    },
+    {
+        "text": "余弦相似度衡量两个向量方向的夹角，取值范围从 -1 到 1，"
+        "数值越接近 1 表示两段文本的语义越相近。",
+        "source": "doc_math",
+        "category": "基础概念",
+    },
+    {
+        "text": "LangChain 的 OllamaEmbeddings 封装了 Ollama 的 /api/embed 接口，"
+        "调用 embed_documents 可以批量把文本转成向量，调用 embed_query 把问题转成向量。",
+        "source": "doc_langchain",
+        "category": "开发框架",
+    },
+    {
+        "text": "HNSW 是一种分层可导航小世界图索引，通过近似搜索在毫秒级返回 top-k 结果，"
+        "牺牲少量召回率换取比暴力扫描快几个数量级的检索速度。",
+        "source": "doc_index",
+        "category": "基础概念",
+    },
+    {
+        "text": "FLAT 索引对每条向量做精确暴力搜索，结果与逐条比对完全一致，"
+        "适合数据量在几万条以内的教学与原型场景。",
+        "source": "doc_index",
+        "category": "基础概念",
+    },
+    {
+        "text": "RAG 检索增强生成的思路是：先从向量库检索与问题相关的文档片段，"
+        "再把片段拼进提示词交给大模型，从而减少幻觉并支持知识更新。",
+        "source": "doc_rag",
+        "category": "应用模式",
+    },
+    {
+        "text": "文本切分时 chunk_size 控制每个片段的最大长度，"
+        "chunk_overlap 让相邻片段首尾重叠，避免关键信息正好被切断在边界上。",
+        "source": "doc_split",
+        "category": "开发框架",
+    },
+    {
+        "text": "langchain-redis 是 LangChain 官方的 Redis 集成包，"
+        "提供 RedisVectorStore 向量存储、RedisChatMessageHistory 对话历史与语义缓存能力。",
+        "source": "doc_langchain",
+        "category": "开发框架",
+    },
+    {
+        "text": "Milvus 是专为向量检索设计的分布式数据库，"
+        "Milvus Lite 可以直接以本地 .db 文件形式运行，无需启动任何服务即可完成原型验证。",
+        "source": "doc_milvus",
+        "category": "向量数据库",
+    },
+    {
+        "text": "向量检索支持元数据过滤，例如先按 category 等于向量数据库缩小候选范围，"
+        "再在候选集合内做 KNN 检索，可以让结果更精准。",
+        "source": "doc_filter",
+        "category": "应用模式",
+    },
+    {
+        "text": "嵌入模型负责把文本变成向量，是检索环节的主角；"
+        "对话大模型负责生成回答，是生成环节的主角，两者职责不同，可以自由组合。",
+        "source": "doc_embedding",
+        "category": "基础概念",
+    },
+    {
+        "text": "向量一旦落盘就具备持久化能力，程序重启甚至换一台机器，"
+        "只要连上同一个 Redis 或 Milvus 实例就能继续检索，无需重新计算嵌入。",
+        "source": "doc_persist",
+        "category": "应用模式",
+    },
+    {
+        "text": "对话历史持久化常用 Redis 存储，LangChain 的 RedisChatMessageHistory "
+        "会按 session_id 为每个会话保留独立的消息列表，并支持设置过期时间。",
+        "source": "doc_redis",
+        "category": "向量数据库",
+    },
+    {
+        "text": "本地化 RAG 的完整链路是：Ollama 跑嵌入模型生成向量，"
+        "Redis Stack 或 Milvus 负责存储与检索向量，LangChain 负责编排整个流程。",
+        "source": "doc_rag",
+        "category": "应用模式",
+    },
+]
+
+LONG_ARTICLE = """本地检索增强生成（RAG）技术栈完整解析
+
+第一部分：为什么需要 RAG。
+大语言模型的知识停留在训练截止日期，且无法感知你硬盘上的私有文档。
+把文档片段在提问时动态注入提示词，可以让模型基于最新、最私有的资料作答，
+这条路线就是检索增强生成。检索的准确度直接决定回答的质量，因此向量检索环节至关重要。
+
+第二部分：嵌入模型的选择。
+嵌入模型把文本映射为固定长度的数值向量，语义相近的文本在向量空间中彼此靠近。
+云端 API 提供的嵌入服务稳定但存在数据出境与费用问题，本地嵌入模型则完全离线。
+Ollama 支持 embeddinggemma、nomic-embed-text 等多种嵌入模型，
+其中 embeddinggemma 输出 768 维向量，中文效果良好且推理速度极快。
+
+第三部分：向量数据库的职责。
+原始文本经过切分后逐段计算向量，向量库负责存储这些向量并支持近似最近邻检索。
+Redis Stack 通过 RediSearch 模块提供向量检索能力，优势是复用已有的 Redis 基础设施；
+Milvus 则是专为向量检索设计的数据库，提供更丰富的索引类型与水平扩展能力。
+Milvus Lite 以本地文件形式运行，适合在笔记本上完成原型验证。
+
+第四部分：切分策略的影响。
+切分过粗会引入无关信息稀释上下文，切分过细则可能把完整语义拦腰截断。
+常用做法是按 200 到 500 字切分并保留 10 到 20 percent 的重叠区，
+再配合元数据标注来源，便于检索结果回溯原文。
+
+第五部分：完整工程链路。
+文档进入系统后依次经过加载、切分、嵌入、入库四个步骤写入向量库；
+用户提问时先对问题做嵌入，再在向量库中检索 top-k 片段，
+最后把片段与问题一起交给对话大模型生成答案。
+整个流程用 LangChain 串联后，替换嵌入模型或向量库都只需要改动一行初始化代码。"""
+
+
+def get_embeddings() -> OllamaEmbeddings:
+    return OllamaEmbeddings(model=EMBED_MODEL)
+
+
+def get_chat_model() -> ChatOllama:
+    return ChatOllama(model=CHAT_MODEL, temperature=0)
+
+
+def get_redis_client():
+    import redis
+
+    return redis.Redis.from_url(REDIS_URL, decode_responses=True)
+
+
+def build_documents() -> list[Document]:
+    return [
+        Document(page_content=item["text"], metadata={"source": item["source"], "category": item["category"]})
+        for item in KNOWLEDGE
+    ]
+
+
+def reset_redis_index(index_name: str = INDEX_NAME) -> bool:
+    """若索引已存在则连同数据一起删除，保证脚本可重复运行。返回是否发生了删除。"""
+    client = get_redis_client()
+    try:
+        client.ft(index_name).dropindex(delete_documents=True)
+        return True
+    except Exception:
+        return False
+
+
+def banner(title: str) -> None:
+    print("\n" + "=" * 64)
+    print(f"  {title}")
+    print("=" * 64)`;
+document.getElementById('src-common').textContent = COMMON_SRC;
+
+/* ---------- 轻量语法高亮 ---------- */
+const PY_KW = new Set(('from import def return for in if elif else while not and or None True False '
+  + 'lambda with as class try except raise pass yield is del global assert break continue').split(' '));
+const PY_BUILTIN = new Set(('print len range float str int list dict set tuple enumerate zip sum min max '
+  + 'round open isinstance type super self').split(' '));
+
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+const PY_RE = /(?:[rRuUbBfF]{1,2}(?:"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|"""[\s\S]*?"""|'''[\s\S]*?'''|#[^\n]*|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|\b\d+(?:\.\d+)?\b|[A-Za-z_][A-Za-z0-9_]*)/g;
+
+function hlPy(code){
+  let out = '', last = 0, m;
+  PY_RE.lastIndex = 0;
+  while ((m = PY_RE.exec(code)) !== null) {
+    out += esc(code.slice(last, m.index));
+    const t = m[0];
+    let cls = '';
+    if (t[0] === '#') cls = 'tok-c';
+    else if (/^(?:[rRuUbBfF]{1,2})?["']/.test(t) || t.startsWith('"""') || t.startsWith("'''")) cls = 'tok-s';
+    else if (/^\d/.test(t)) cls = 'tok-n';
+    else if (PY_KW.has(t)) cls = 'tok-k';
+    else {
+      const rest = code.slice(m.index + t.length);
+      if (/^\s*\(/.test(rest)) cls = 'tok-f';
+      else if (PY_BUILTIN.has(t)) cls = 'tok-f';
+      else cls = '';
+    }
+    out += cls ? '<span class="' + cls + '">' + esc(t) + '</span>' : esc(t);
+    last = m.index + t.length;
+  }
+  out += esc(code.slice(last));
+  return out;
+}
+
+const BASH_RE = /("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|#[^\n]*|^\s*\$.*$|\b(?:docker|ollama|pip|python|redis-cli|ls|for|do|done|curl)\b)/gm;
+function hlBash(code){
+  let out = '', last = 0, m;
+  BASH_RE.lastIndex = 0;
+  while ((m = BASH_RE.exec(code)) !== null) {
+    out += esc(code.slice(last, m.index));
+    const t = m[0];
+    let cls = 'tok-c';
+    if (t[0] === '#') cls = 'tok-c';
+    else if (t.trim().startsWith('$')) cls = 'tok-p';
+    else if (t[0] === '"' || t[0] === "'") cls = 'tok-s';
+    else cls = 'tok-f';
+    out += '<span class="' + cls + '">' + esc(t) + '</span>';
+    last = m.index + t.length;
+  }
+  out += esc(code.slice(last));
+  return out;
+}
+
+const OUT_RE = /(\d+\.\d+|\bnum_docs\b|\bnum_records\b|\[[^\]\n]{1,24}\])/g;
+function hlOut(code){
+  let out = '', last = 0, m;
+  OUT_RE.lastIndex = 0;
+  while ((m = OUT_RE.exec(code)) !== null) {
+    out += esc(code.slice(last, m.index));
+    const t = m[0];
+    const cls = /^\d/.test(t) ? 'tok-num' : 'tok-tag';
+    out += '<span class="' + cls + '">' + esc(t) + '</span>';
+    last = m.index + t.length;
+  }
+  out += esc(code.slice(last));
+  return out;
+}
+
+document.querySelectorAll('pre.lang-py').forEach(p => { p.innerHTML = hlPy(p.textContent); });
+document.querySelectorAll('pre.lang-bash').forEach(p => { p.innerHTML = hlBash(p.textContent); });
+document.querySelectorAll('pre.lang-out').forEach(p => { p.innerHTML = hlOut(p.textContent); });
+
+/* ---------- 复制按钮（Clipboard API + execCommand 降级） ---------- */
+function legacyCopy(txt){
+  return new Promise((res, rej) => {
+    const ta = document.createElement('textarea');
+    ta.value = txt;
+    ta.style.cssText = 'position:fixed;top:-999px;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch(e){ ok = false; }
+    ta.remove();
+    ok ? res() : rej(new Error('execCommand failed'));
+  });
+}
+function copyText(txt){
+  return legacyCopy(txt).catch(() => {
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(txt);
+    throw new Error('no copy api');
+  });
+}
+document.querySelectorAll('.copy').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const pre = btn.closest('.block').querySelector('pre');
+    const reset = () => setTimeout(() => btn.textContent = 'copy', 1600);
+    copyText(pre.textContent).then(() => { btn.textContent = '已复制 ✓'; reset(); })
+      .catch(() => {
+        const r = document.createRange();
+        r.selectNodeContents(pre);
+        const sel = getSelection();
+        sel.removeAllRanges(); sel.addRange(r);
+        btn.textContent = '已选中 Ctrl+C'; reset();
+      });
+  });
+});
+</script>
+</body>
+</html>
