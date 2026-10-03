@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>xunxiancoming · 把踩过的坑，写成走过的路</title>
-<meta name="description" content="xunxiancoming 的个人技术笔记 —— LangChain、Ollama、Redis、Milvus 与分布式实战。所有输出均为真实运行结果。">
+<meta name="description" content="xunxiancoming 的个人技术笔记 —— LangChain、Ollama、Redis Stack、MCP 与本地 RAG 实战。3 篇文章 29 节，所有输出均为真实运行结果。">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='18' fill='%23d93a1e'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='%23f7f4ec' font-family='Georgia,serif' font-weight='bold'>X</text></svg>">
 <style>
 :root{
@@ -315,16 +315,17 @@ footer a:hover{color:var(--vermilion);border-bottom-color:var(--vermilion)}
     </h1>
     <p class="lead">
       这里是 <b>xunxiancoming</b> 的技术笔记 —— 记录 <b>AI 应用工程</b> 与 <b>后端实战</b>：
-      从本地 Embeddings 到向量持久化，从检索到生成。每一篇的终端输出都来自
+      从本地 Embeddings 到向量持久化，从检索生成到 MCP 协议与研报问答。每一篇的终端输出都来自
       <b>真实运行</b>，代码可复跑，非示意、非截图转述。
     </p>
     <div class="chips">
-      <span class="chip hot">1 篇已发布</span>
+      <span class="chip hot">3 篇已发布 · 约 47 分钟</span>
       <span class="chip">LangChain</span>
       <span class="chip">Ollama</span>
       <span class="chip">Redis Stack</span>
       <span class="chip">Milvus</span>
       <span class="chip">RAG</span>
+      <span class="chip">MCP</span>
       <span class="chip">Python</span>
     </div>
     <div class="stamp">
@@ -332,10 +333,10 @@ footer a:hover{color:var(--vermilion);border-bottom-color:var(--vermilion)}
       <small>真实运行验证</small>
     </div>
     <div class="stats">
-      <div class="stat"><div class="num">01</div><div class="lab">Posts · 文章</div></div>
-      <div class="stat"><div class="num">100%</div><div class="lab">Real Run · 真实输出</div></div>
-      <div class="stat"><div class="num">11</div><div class="lab">Sections · 章节</div></div>
-      <div class="stat"><div class="num">∞</div><div class="lab">Pits to Fill · 坑待填</div></div>
+      <div class="stat"><div class="num">03</div><div class="lab">Posts · 文章</div></div>
+      <div class="stat"><div class="num">29</div><div class="lab">Sections · 章节</div></div>
+      <div class="stat"><div class="num">16</div><div class="lab">Scripts · 可复跑脚本</div></div>
+      <div class="stat"><div class="num">30</div><div class="lab">Real Outputs · 真实输出块</div></div>
     </div>
   </section>
 
@@ -407,7 +408,7 @@ footer a:hover{color:var(--vermilion);border-bottom-color:var(--vermilion)}
       </div>
     </a>
 
-        <a class="post reveal" href="posts/local-rag-report-pdf.html">
+    <a class="post reveal" href="posts/local-rag-report-pdf.html">
       <div class="post-top">
         <span class="post-no">NO.003</span>
         <span class="post-date">2026-10-03</span>
