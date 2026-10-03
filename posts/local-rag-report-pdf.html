@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>本地 RAG 实战：Ollama + Redis Stack 把券商研报变成能追问的知识库</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='42' fill='%23d93a1e'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='%23f7f4ec'>R</text></svg>">
+<style>
+:root{
+  --paper:#f7f4ec;
+  --paper-2:#efeadd;
+  --ink:#16130e;
+  --ink-2:#4a443a;
+  --ink-3:#7a7264;
+  --vermilion:#d93a1e;
+  --vermilion-deep:#a92a12;
+  --teal:#0f6b62;
+  --rule:rgba(22,19,14,.16);
+  --rule-strong:rgba(22,19,14,.5);
+  --code-bg:#14171c;
+  --code-fg:#c9d1d9;
+  --card:#fffdf7;
+  --shadow:0 2px 0 rgba(22,19,14,.9);
+  --mono:"JetBrains Mono","Fira Code","SF Mono",Consolas,"Liberation Mono",monospace;
+  --serif:"Noto Serif CJK SC","Source Han Serif SC","Songti SC","SimSun",Georgia,serif;
+  --sans:"Noto Sans CJK SC","Source Han Sans SC","PingFang SC","Microsoft YaHei",-apple-system,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#14161a;
+    --paper-2:#1b1e24;
+    --ink:#e9e4d8;
+    --ink-2:#b5aea0;
+    --ink-3:#857e70;
+    --vermilion:#ff6a4d;
+    --vermilion-deep:#ff8f78;
+    --teal:#4fd1c0;
+    --rule:rgba(233,228,216,.16);
+    --rule-strong:rgba(233,228,216,.45);
+    --card:#1a1d23;
+    --shadow:0 2px 0 rgba(0,0,0,.6);
+  }
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;scroll-padding-top:80px}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-size:16.5px;
+  line-height:1.85;
+  -webkit-font-smoothing:antialiased;
+  background-image:
+    linear-gradient(var(--rule) 1px,transparent 1px),
+    linear-gradient(90deg,var(--rule) 1px,transparent 1px);
+  background-size:56px 56px;
+  background-attachment:fixed;
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.35;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+}
+.wrap{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:0 28px}
+a{color:var(--vermilion);text-decoration:none;border-bottom:1px solid transparent;transition:.2s}
+a:hover{border-bottom-color:var(--vermilion)}
+
+/* ---------- progress ---------- */
+#progress{position:fixed;top:0;left:0;height:4px;width:0;background:var(--vermilion);z-index:99;transition:width .1s linear}
+
+/* ---------- hero ---------- */
+header.hero{
+  border-bottom:3px solid var(--ink);
+  padding:72px 0 40px;
+  position:relative;overflow:hidden;
+}
+.hero .eyebrow{
+  font-family:var(--mono);font-size:12.5px;letter-spacing:.34em;text-transform:uppercase;
+  color:var(--vermilion);font-weight:700;margin-bottom:22px;
+  animation:rise .7s .05s both;
+}
+.hero h1{
+  font-family:var(--serif);font-weight:900;
+  font-size:clamp(32px,5vw,58px);line-height:1.16;letter-spacing:-.01em;
+  max-width:16em;animation:rise .7s .15s both;
+}
+.hero h1 em{font-style:normal;color:var(--vermilion);position:relative;white-space:nowrap}
+.hero h1 em::after{
+  content:"";position:absolute;left:0;right:0;bottom:.06em;height:.14em;
+  background:var(--vermilion);opacity:.28;transform:scaleX(0);transform-origin:left;
+  animation:swipe .8s .9s forwards;
+}
+.hero .sub{
+  margin-top:24px;max-width:44em;color:var(--ink-2);font-size:17.5px;
+  animation:rise .7s .3s both;
+}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:32px;animation:rise .7s .45s both}
+.chip{
+  font-family:var(--mono);font-size:12.5px;padding:5px 13px;
+  border:1.5px solid var(--ink);background:var(--card);
+  box-shadow:var(--shadow);
+}
+.chip.hot{background:var(--vermilion);color:#fff;border-color:var(--vermilion-deep)}
+.hero .stamp{
+  position:absolute;right:-8px;top:64px;transform:rotate(9deg);
+  border:3px solid var(--vermilion);color:var(--vermilion);
+  font-family:var(--mono);font-weight:800;font-size:13px;line-height:1.35;
+  padding:10px 16px;text-align:center;letter-spacing:.08em;
+  opacity:.85;border-radius:4px;
+  animation:stampIn .5s 1.1s both;
+}
+@keyframes rise{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:none}}
+@keyframes swipe{to{transform:scaleX(1)}}
+@keyframes stampIn{from{opacity:0;transform:rotate(9deg) scale(1.6)}to{opacity:.85;transform:rotate(9deg) scale(1)}}
+@media(max-width:820px){.hero .stamp{display:none}}
+
+/* ---------- layout with toc ---------- */
+.layout{display:grid;grid-template-columns:210px minmax(0,1fr);gap:46px;padding:52px 0 90px}
+.layout>main{min-width:0}
+@media(max-width:1040px){.layout{grid-template-columns:minmax(0,1fr);gap:0}nav.toc{display:none}}
+nav.toc{position:sticky;top:34px;align-self:start;font-family:var(--mono);font-size:12.5px}
+nav.toc .toc-title{letter-spacing:.28em;color:var(--ink-3);font-size:11px;margin-bottom:14px;font-weight:700}
+nav.toc a{
+  display:block;padding:6px 0 6px 14px;color:var(--ink-2);border:0;
+  border-left:2px solid var(--rule);transition:.18s;line-height:1.5;
+}
+nav.toc a:hover{color:var(--ink);border-left-color:var(--ink-3)}
+nav.toc a.on{color:var(--vermilion);border-left:2px solid var(--vermilion);font-weight:700;background:linear-gradient(90deg,rgba(217,58,30,.09),transparent)}
+
+/* ---------- sections ---------- */
+section{margin-bottom:76px}
+.sec-head{display:flex;align-items:flex-start;gap:18px;border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:30px}
+.sec-num{
+  font-family:var(--mono);font-weight:800;font-size:clamp(38px,7vw,58px);line-height:.9;
+  color:transparent;-webkit-text-stroke:2px var(--ink);flex-shrink:0;
+}
+.sec-head h2{font-family:var(--serif);font-size:clamp(23px,3.4vw,32px);font-weight:800;line-height:1.3;flex:1}
+.sec-head .tag{
+  font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--vermilion);
+  border:1.5px solid var(--vermilion);padding:3px 9px;align-self:center;white-space:nowrap;font-weight:700;
+}
+h3{font-family:var(--serif);font-size:20.5px;font-weight:800;margin:34px 0 12px;display:flex;align-items:center;gap:10px}
+h3::before{content:"";width:14px;height:14px;background:var(--vermilion);flex-shrink:0;clip-path:polygon(0 0,100% 0,100% 65%,65% 100%,0 100%)}
+p{margin:0 0 16px;color:var(--ink-2)}
+p strong,li strong{color:var(--ink);font-weight:700}
+code.inline{
+  font-family:var(--mono);font-size:.87em;background:var(--paper-2);
+  border:1px solid var(--rule);padding:1px 6px;border-radius:3px;color:var(--vermilion-deep);
+  white-space:nowrap;
+}
+ul.list{margin:0 0 18px;padding-left:0;list-style:none}
+ul.list li{position:relative;padding-left:24px;margin-bottom:9px;color:var(--ink-2)}
+ul.list li::before{content:"▸";position:absolute;left:4px;color:var(--vermilion);font-weight:700}
+
+/* ---------- principle card ---------- */
+.principle{
+  background:var(--card);border:1.5px solid var(--ink);border-left:7px solid var(--vermilion);
+  padding:20px 24px;margin:22px 0;box-shadow:var(--shadow);position:relative;
+}
+.principle .p-label{
+  position:absolute;top:-11px;left:16px;background:var(--vermilion);color:#fff;
+  font-family:var(--mono);font-size:11px;font-weight:800;letter-spacing:.2em;padding:2px 10px;
+}
+.principle h4{font-family:var(--serif);font-size:17.5px;margin:6px 0 8px;font-weight:800}
+.principle p{margin-bottom:8px;font-size:15.5px}
+.principle p:last-child{margin-bottom:0}
+.principle.teal{border-left-color:var(--teal)}
+.principle.teal .p-label{background:var(--teal)}
+
+/* ---------- diagram ---------- */
+.diagram{border:2px solid var(--ink);background:var(--card);padding:24px 20px;margin:26px 0;box-shadow:var(--shadow);overflow-x:auto}
+.diagram .lane-title{font-family:var(--mono);font-size:11.5px;letter-spacing:.2em;color:var(--ink-3);font-weight:700;margin-bottom:12px}
+.flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;row-gap:14px}
+.node{
+  border:1.5px solid var(--ink);background:var(--paper);padding:9px 13px;min-width:104px;
+  font-size:13.5px;line-height:1.4;font-weight:600;text-align:center;position:relative;
+}
+.node small{display:block;font-family:var(--mono);font-size:10.5px;color:var(--ink-3);font-weight:400;margin-top:2px}
+.node.persist{border:2.5px solid var(--vermilion);background:rgba(217,58,30,.07)}
+.node.persist small{color:var(--vermilion);font-weight:700}
+.node.model{border-style:dashed}
+.arrow{display:flex;align-items:center;padding:0 9px;color:var(--vermilion);font-size:19px;font-weight:700}
+.lane{margin-bottom:24px}
+.lane:last-child{margin-bottom:0}
+.diagram .legend{margin-top:18px;padding-top:14px;border-top:1px dashed var(--rule);font-size:13px;color:var(--ink-3);font-family:var(--mono);line-height:1.9}
+.diagram .legend b{color:var(--vermilion)}
+
+/* ---------- code & output ---------- */
+.block{margin:22px 0 30px;border:1.5px solid var(--ink);box-shadow:var(--shadow);background:var(--code-bg);position:relative}
+.block-bar{
+  display:flex;align-items:center;gap:12px;padding:8px 14px;
+  background:#0d0f13;border-bottom:1px solid rgba(255,255,255,.1);
+  font-family:var(--mono);font-size:11.5px;color:#8b949e;letter-spacing:.06em;
+}
+.block-bar .dot{width:9px;height:9px;border-radius:50%;background:#ff5f56;box-shadow:14px 0 0 #ffbd2e,28px 0 0 #27c93f;margin-right:30px}
+.block-bar .fname{color:#e6edf3;font-weight:700}
+.block-bar .lang{color:var(--vermilion);border:1px solid var(--vermilion);padding:0 7px;font-size:10.5px;font-weight:700}
+.block-bar .copy{
+  margin-left:auto;cursor:pointer;color:#8b949e;border:1px solid #30363d;
+  padding:2px 10px;font-family:var(--mono);font-size:11px;transition:.15s;background:transparent;
+}
+.block-bar .copy:hover{color:#fff;border-color:var(--vermilion);background:var(--vermilion)}
+pre{
+  margin:0;padding:18px 20px;overflow-x:auto;
+  font-family:var(--mono);font-size:13px;line-height:1.72;color:var(--code-fg);
+  white-space:pre;tab-size:4;
+}
+pre.out{background:#101317;color:#a9b4c0}
+.real-stamp{
+  position:absolute;top:44px;right:14px;transform:rotate(-7deg);
+  border:2.5px solid #ff6a4d;color:#ff6a4d;font-family:var(--mono);font-weight:800;
+  font-size:11px;letter-spacing:.1em;padding:4px 10px;pointer-events:none;
+  background:rgba(16,19,23,.85);border-radius:3px;z-index:2;
+}
+.tok-c{color:#6e7681;font-style:italic}
+.tok-s{color:#7ee787}
+.tok-k{color:#ff7b72;font-weight:600}
+.tok-n{color:#79c0ff}
+.tok-f{color:#d2a8ff}
+.tok-p{color:#ffa657}
+.tok-num{color:#79c0ff;font-weight:700}
+.tok-tag{color:#7ee787}
+
+/* ---------- tables ---------- */
+.tablewrap{overflow-x:auto;margin:22px 0;border:1.5px solid var(--ink);box-shadow:var(--shadow);background:var(--card)}
+table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:600px}
+th,td{padding:11px 15px;text-align:left;border-bottom:1px solid var(--rule)}
+th{background:var(--ink);color:var(--paper);font-family:var(--mono);font-size:12.5px;letter-spacing:.08em;font-weight:700}
+tbody tr:nth-child(even){background:rgba(0,0,0,.025)}
+@media(prefers-color-scheme:dark){tbody tr:nth-child(even){background:rgba(255,255,255,.03)}}
+td:first-child{font-weight:700;color:var(--ink)}
+td b.red{color:var(--vermilion)}
+tbody tr:last-child td{border-bottom:0}
+
+/* ---------- pitfalls ---------- */
+.pitfall{
+  border:1.5px solid var(--rule-strong);background:var(--card);margin-bottom:14px;
+  display:grid;grid-template-columns:56px 1fr;overflow:hidden;
+}
+.pitfall .no{
+  background:repeating-linear-gradient(45deg,var(--vermilion),var(--vermilion) 7px,var(--vermilion-deep) 7px,var(--vermilion-deep) 14px);
+  color:#fff;font-family:var(--mono);font-weight:800;font-size:18px;
+  display:flex;align-items:center;justify-content:center;
+}
+.pitfall .body{padding:14px 18px}
+.pitfall h5{font-family:var(--serif);font-size:16.5px;font-weight:800;margin-bottom:5px}
+.pitfall p{font-size:14.5px;margin:0;color:var(--ink-2)}
+
+/* ---------- appendix ---------- */
+details{border:1.5px solid var(--ink);background:var(--card);margin:16px 0;box-shadow:var(--shadow)}
+details summary{
+  cursor:pointer;padding:13px 18px;font-family:var(--mono);font-size:13.5px;font-weight:700;
+  list-style:none;display:flex;align-items:center;gap:10px;letter-spacing:.04em;
+}
+details summary::-webkit-details-marker{display:none}
+details summary::before{content:"＋";color:var(--vermilion);font-weight:800}
+details[open] summary::before{content:"－"}
+details[open] summary{border-bottom:1px solid var(--rule)}
+details .d-body{padding:0}
+details pre{background:var(--code-bg);font-size:12.5px;max-height:560px;overflow:auto}
+.tree{font-family:var(--mono);font-size:13px;background:var(--card);border:1.5px solid var(--ink);padding:18px 22px;box-shadow:var(--shadow);line-height:1.95;overflow-x:auto;color:var(--ink-2);white-space:pre-wrap;word-break:break-word}
+.tree b{color:var(--vermilion)}
+.tree .dim{color:var(--ink-3)}
+
+/* ---------- callout ---------- */
+.callout{
+  border:2px dashed var(--teal);background:rgba(15,107,98,.06);
+  padding:16px 20px;margin:22px 0;font-size:15px;color:var(--ink-2);
+}
+.callout b{color:var(--teal)}
+
+/* ---------- footer ---------- */
+footer{
+  border-top:3px solid var(--ink);padding:36px 0 60px;
+  font-family:var(--mono);font-size:12.5px;color:var(--ink-3);
+  display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;letter-spacing:.05em;
+}
+#top{
+  position:fixed;right:22px;bottom:22px;width:46px;height:46px;z-index:50;
+  background:var(--vermilion);color:#fff;border:0;cursor:pointer;font-size:20px;
+  opacity:0;pointer-events:none;transition:.3s;box-shadow:3px 3px 0 var(--ink);
+}
+#top.show{opacity:1;pointer-events:auto}
+#top:hover{transform:translateY(-3px)}
+#home{
+  position:fixed;left:22px;bottom:22px;z-index:50;
+  font-family:var(--mono);font-size:12.5px;font-weight:700;letter-spacing:.1em;
+  background:var(--card);color:var(--ink);padding:11px 16px;
+  border:2px solid var(--ink);box-shadow:3px 3px 0 var(--ink);
+  transition:.2s;
+}
+#home:hover{background:var(--vermilion);border-color:var(--vermilion-deep);color:#fff;transform:translate(-2px,-2px);box-shadow:5px 5px 0 var(--ink)}
+@media (max-width:560px){#home{left:12px;bottom:12px;padding:9px 12px}}
+::selection{background:var(--vermilion);color:#fff}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<a id="home" href="../index.html" title="返回博客首页">← 首页</a>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">FIELD MANUAL · 本地 RAG · v1.0</div>
+    <h1>把一份券商研报<br>变成<em>能追问的本地知识库</em></h1>
+    <p class="sub">Ollama 跑 minicpm2b:4 与 embeddinggemma，Redis Stack 当向量库，LangChain 串链路，
+      5 页《胜蓝股份》研报从 PDF 变成可检索、可问答的知识库。5 个脚本全部真实跑通，
+      连同一次真实的模型答错一起记录在下面。</p>
+    <div class="chips">
+      <span class="chip hot">7 节 · 已真实跑通</span>
+      <span class="chip">Ollama</span>
+      <span class="chip">Redis Stack</span>
+      <span class="chip">embeddinggemma</span>
+      <span class="chip">minicpm2b:4</span>
+      <span class="chip">LangChain</span>
+    </div>
+    <div class="stamp">REAL OUTPUT<br>真实运行验证<br>2026-10-03</div>
+  </div>
+</header>
+
+<div class="wrap layout">
+<nav class="toc" id="toc">
+  <div class="toc-title">目录 / CONTENTS</div>
+  <a href="#s0">00 · 全链路原理</a>
+  <a href="#s1">01 · 解析 PDF</a>
+  <a href="#s2">02 · 中文切分</a>
+  <a href="#s3">03 · 向量入库</a>
+  <a href="#s4">04 · 相似度检索</a>
+  <a href="#s5">05 · RAG 问答链</a>
+  <a href="#s6">06 · 踩坑与复盘</a>
+</nav>
+
+<main>
+
+<section id="s0">
+  <div class="sec-head">
+    <div class="sec-num">00</div>
+    <h2>全链路原理：写入路径与查询路径</h2>
+    <span class="tag">WHY</span>
+  </div>
+
+  <p>RAG（Retrieval-Augmented Generation，检索增强生成）拆开是两条路径：
+  <strong>写入路径</strong>把文档变成向量存起来，<strong>查询路径</strong>把问题变成向量去捞片段，
+  再交给大模型生成回答。这次的料是一份 5 页的券商研报
+  <code class="inline">assets/report.pdf</code>，五个环节全部用本地组件，一个 API key 都不花。</p>
+
+  <div class="diagram">
+    <div class="lane">
+      <div class="lane-title">① 写入路径 / WRITE PATH</div>
+      <div class="flow">
+        <div class="node">report.pdf<small>5 页研报</small></div>
+        <div class="arrow">→</div>
+        <div class="node">pypdf 解析<small>按页成 Document</small></div>
+        <div class="arrow">→</div>
+        <div class="node">中文切分<small>500 字 / 重叠 100</small></div>
+        <div class="arrow">→</div>
+        <div class="node model">embeddinggemma<small>768 维向量</small></div>
+        <div class="arrow">→</div>
+        <div class="node persist">Redis Stack<small>HNSW + COSINE</small></div>
+      </div>
+    </div>
+    <div class="lane">
+      <div class="lane-title">② 查询路径 / QUERY PATH</div>
+      <div class="flow">
+        <div class="node">用户提问<small>自然语言</small></div>
+        <div class="arrow">→</div>
+        <div class="node model">embeddinggemma<small>问题向量化</small></div>
+        <div class="arrow">→</div>
+        <div class="node">KNN 检索<small>top-4 片段</small></div>
+        <div class="arrow">→</div>
+        <div class="node model">minicpm2b:4<small>带资料作答</small></div>
+        <div class="arrow">→</div>
+        <div class="node persist">回答<small>标注页码</small></div>
+      </div>
+    </div>
+    <div class="legend">
+      实线框 = 数据 &nbsp;·&nbsp; 虚线框 = 模型 &nbsp;·&nbsp; <b>红框 = 最终落点</b>
+    </div>
+  </div>
+
+  <h3>本次用到的全部零件</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>环节</th><th>选型</th><th>验证情况</th></tr></thead>
+      <tbody>
+        <tr><td>推理服务</td><td>Ollama <code class="inline">localhost:11434</code></td><td><b class="red">已跑通</b></td></tr>
+        <tr><td>生成模型</td><td>minicpm2b:4（2.5B / Q4_K_M）</td><td>已 pull，3 问答实测</td></tr>
+        <tr><td>嵌入模型</td><td>embeddinggemma（768 维）</td><td><code class="inline">/api/embed</code> 实测出向量</td></tr>
+        <tr><td>向量库</td><td>Redis Stack 容器 <code class="inline">redis://localhost:26379</code></td><td>ping OK，RediSearch（<code class="inline">search</code> 模块）已加载</td></tr>
+        <tr><td>编排</td><td>LangChain 1.4 + langchain-redis 0.2.5</td><td>conda env <code class="inline">zeroai</code></td></tr>
+        <tr><td>文档解析</td><td>pypdf 6.17</td><td>5 页 / 5556 字符</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout"><b>关键：</b>Python 环境必须用 conda 的 <code class="inline">zeroai</code>
+    （Python 3.10，装好了 redis、langchain-redis、pypdf）。系统自带的 python3.14 没有
+    <code class="inline">redis</code> 包，直接跑会当场报错——这是本文第一个坑，见第 06 节。</div>
+
+  <div class="principle">
+    <div class="p-label">PRINCIPLE 01</div>
+    <h4>检索质量决定回答质量，生成模型只是「嘴巴」</h4>
+    <p>RAG 里最容易被低估的是切分和检索。切分决定了一个知识点会不会被拦腰砍断，
+      检索决定了模型到底能看见什么。模型再强，检索没捞到，也只能编。
+    所以下面 01 到 04 节（占了五分之四篇幅）都在处理数据，第 05 节才轮到大模型出场。</p>
+  </div>
+</section>
+
+<section id="s1">
+  <div class="sec-head">
+    <div class="sec-num">01</div>
+    <h2>解析 PDF：pypdf 按页产出 Document</h2>
+    <span class="tag">LOAD</span>
+  </div>
+
+  <p>第一件事是把 PDF 变成 LangChain 的 <code class="inline">Document</code>。
+    每一页一个 Document，并把<strong>页码写进 metadata</strong>——后面回答问题时
+    能标「根据第 3 页」，全靠这里留的字段。</p>
+
+  <div class="block">
+    <div class="block-bar">
+      <span class="dot"></span>
+      <span class="fname">01_load_pdf.py</span>
+      <span class="lang">PYTHON</span>
+      <button class="copy">copy</button>
+    </div>
+    <pre class="lang-py">&quot;&quot;&quot;Step 1：用 pypdf 解析 assets/report.pdf，产出带页码元数据的 Document。&quot;&quot;&quot;
+
+import os
+from pathlib import Path
+
+from langchain_core.documents import Document
+from pypdf import PdfReader
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PDF_PATH = os.getenv(&quot;REPORT_PDF&quot;, str(PROJECT_ROOT / &quot;assets&quot; / &quot;report.pdf&quot;))
+
+print(&quot;=&quot; * 64)
+print(&quot;  Step 1  pypdf 解析 report.pdf&quot;)
+print(&quot;=&quot; * 64)
+
+reader = PdfReader(PDF_PATH)
+print(f&quot;\n[0] 文件: {PDF_PATH}&quot;)
+print(f&quot;    页数: {len(reader.pages)}&quot;)
+
+documents: list[Document] = []
+for i, page in enumerate(reader.pages, 1):
+    text = (page.extract_text() or &quot;&quot;).strip()
+    documents.append(
+        Document(
+            page_content=text,
+            metadata={&quot;source&quot;: Path(PDF_PATH).name, &quot;page&quot;: i, &quot;chars&quot;: len(text)},
+        )
+    )
+    print(f&quot;    第 {i} 页: {len(text)} 字符&quot;)
+
+total = sum(d.metadata[&quot;chars&quot;] for d in documents)
+print(f&quot;\n[1] 合计 {len(documents)} 个 Document，{total} 字符&quot;)
+
+print(&quot;\n[2] 第 1 页前 200 字预览:&quot;)
+print(&quot;    &quot; + documents[0].page_content[:200].replace(&quot;\n&quot;, &quot; / &quot;))</pre>
+  </div>
+
+  <div class="block">
+    <div class="block-bar">
+      <span class="dot"></span>
+      <span class="fname">python 01_load_pdf.py</span>
+      <span class="lang">OUTPUT</span>
+      <button class="copy">copy</button>
+    </div>
+    <pre class="lang-out">================================================================
+  Step 1  pypdf 解析 report.pdf
+================================================================
+
+[0] 文件: /home/king/桌面/project/zeroAI/assets/report.pdf
+    页数: 5
+    第 1 页: 1340 字符
+    第 2 页: 733 字符
+    第 3 页: 1879 字符
+    第 4 页: 749 字符
+    第 5 页: 855 字符
+
+[1] 合计 5 个 Document，5556 字符
+
+[2] 第 1 页前 200 字预览:
+    2026 年 09 月 30 日  / 高速背板连接器 新贵，业绩即将进入 快速增长 期  / —胜蓝股份 （300843.SZ ）公司动态研究报告   /   / 买入(维持)  /   / 投资要点  /    / 分析师：任春阳 S1050521110006  /  rency@cfsc.com.cn    / 基本数据  2026 -09-30  / 当前股价（元） 119.81  / 总市值（亿元） 203  / 总股本（百万股） 170</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <div class="principle">
+    <div class="p-label">PRINCIPLE 01</div>
+    <h4>页码元数据是研报 RAG 的刚需</h4>
+    <p>研报的价值大量集中在第 1 页的评级、第 2 页的盈利预测和风险提示里。
+      如果切分时丢掉页码，检索结果就变成一堆没有出处的碎片，模型没法说「数据来自第几页」，
+      读者也无法回原文核对。一个 <code class="inline">{"page": i}</code> 的成本，换整条链路可追溯。</p>
+  </div>
+
+  <div class="callout"><b>注意：</b>pypdf 抽的是纯文本。第 3 页的三张财务报表
+    （资产负债表、现金流量表、利润表）会被拉平成一行行数字，表格的行列关系没有了。
+    这是纯文本路线的固有代价，本文接受它——因为检索目标是「哪一年净利润多少」这类数值，
+    拉平后数字仍然在同一个块里。表格结构有强需求的话，得换版面解析（见第 06 节坑 02）。</div>
+</section>
+
+<section id="s2">
+  <div class="sec-head">
+    <div class="sec-num">02</div>
+    <h2>中文切分：500 字一块，重叠 100 字</h2>
+    <span class="tag">SPLIT</span>
+  </div>
+
+  <p>切分用 <code class="inline">RecursiveCharacterTextSplitter</code>，
+    参数 <code class="inline">chunk_size=500</code>、<code class="inline">chunk_overlap=100</code>。
+    关键是分隔符列表：英文默认按空格切，中文没有空格，所以显式加上
+    <code class="inline">"。" "；" "，"</code>，让它优先在句子边界下刀。</p>
+
+  <div class="block">
+    <div class="block-bar">
+      <span class="dot"></span>
+      <span class="fname">02_split.py</span>
+      <span class="lang">PYTHON</span>
+      <button class="copy">copy</button>
+    </div>
+    <pre class="lang-py">&quot;&quot;&quot;Step 2：中文友好的递归切分 —— chunk_size=500，chunk_overlap=100。&quot;&quot;&quot;
+
+import os
+from pathlib import Path
+
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from pypdf import PdfReader
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PDF_PATH = os.getenv(&quot;REPORT_PDF&quot;, str(PROJECT_ROOT / &quot;assets&quot; / &quot;report.pdf&quot;))
+
+CHUNK_SIZE = 500
+CHUNK_OVERLAP = 100
+SEPARATORS = [&quot;\n\n&quot;, &quot;\n&quot;, &quot;。&quot;, &quot;；&quot;, &quot;，&quot;, &quot;&quot;, &quot; &quot;]
+
+print(&quot;=&quot; * 64)
+print(&quot;  Step 2  RecursiveCharacterTextSplitter 中文切分&quot;)
+print(&quot;=&quot; * 64)
+
+reader = PdfReader(PDF_PATH)
+pages = [(p.extract_text() or &quot;&quot;).strip() for p in reader.pages]
+
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=CHUNK_SIZE,
+    chunk_overlap=CHUNK_OVERLAP,
+    separators=SEPARATORS,
+    length_function=len,
+)
+
+chunks = []
+for i, text in enumerate(pages, 1):
+    for j, piece in enumerate(splitter.split_text(text), 1):
+        chunks.append({&quot;text&quot;: piece, &quot;page&quot;: i, &quot;chunk&quot;: j})
+
+print(f&quot;\n[0] 参数: chunk_size={CHUNK_SIZE}, overlap={CHUNK_OVERLAP}&quot;)
+print(f&quot;    分隔符: {SEPARATORS}&quot;)
+print(f&quot;\n[1] 原始 {len(pages)} 页 → 切出 {len(chunks)} 个块&quot;)
+
+lengths = [len(c[&quot;text&quot;]) for c in chunks]
+print(f&quot;    长度: 最短 {min(lengths)} / 平均 {sum(lengths) // len(lengths)} / 最长 {max(lengths)}&quot;)
+
+print(&quot;\n[2] 前 3 个块预览:&quot;)
+for c in chunks[:3]:
+    preview = c[&quot;text&quot;][:60].replace(&quot;\n&quot;, &quot; &quot;)
+    print(f&quot;    [p{c[&#x27;page&#x27;]} #{c[&#x27;chunk&#x27;]}] {len(c[&#x27;text&#x27;])} 字 | {preview}...&quot;)</pre>
+  </div>
+
+  <div class="block">
+    <div class="block-bar">
+      <span class="dot"></span>
+      <span class="fname">python 02_split.py</span>
+      <span class="lang">OUTPUT</span>
+      <button class="copy">copy</button>
+    </div>
+    <pre class="lang-out">================================================================
+  Step 2  RecursiveCharacterTextSplitter 中文切分
+================================================================
+
+[0] 参数: chunk_size=500, overlap=100
+    分隔符: [&#x27;\n\n&#x27;, &#x27;\n&#x27;, &#x27;。&#x27;, &#x27;；&#x27;, &#x27;，&#x27;, &#x27;&#x27;, &#x27; &#x27;]
+
+[1] 原始 5 页 → 切出 15 个块
+    长度: 最短 132 / 平均 428 / 最长 497
+
+[2] 前 3 个块预览:
+    [p1 #1] 496 字 | 2026 年 09 月 30 日  高速背板连接器 新贵，业绩即将进入 快速增长 期  —胜蓝股份 （300843.SZ...
+    [p1 #2] 480 字 | 度增加， 数据中心 服务器架构呈现出 由单机柜向超节点 集群 方向发展， 这对超节点内部各计算单元之间的信号传输效 率、...
+    [p1 #3] 496 字 | 主可控和国产替代 显得尤为重要。 胜蓝股份 专注于电子连接 器及线缆组件、精密结构件的研发、生产与销售 ，产品主要 应用...</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <div class="principle teal">
+    <div class="p-label">PRINCIPLE 02</div>
+    <h4>重叠区是为了不让关键数字死在边界上</h4>
+    <p>5 页 5556 字符切出 15 个块，平均 428 字、最长 497 字。
+      <code class="inline">chunk_overlap=100</code> 让相邻两块首尾重叠约 100 字：
+      「2026-2028 年净利润分别为 2.45、7.30、11.66 亿元」这种长句即使正好压在切分线上，
+      也会在下一块里重复出现一次，不会出现「上半句在 A 块、数字在 B 块」的断裂。</p>
+  </div>
+
+  <div class="callout"><b>参数怎么选的：</b>500 字是中文研报的常见经验值——
+    足够装下一个完整论点（含标题和支撑数据），又不至于把三个不相关话题揉进同一块。
+    这次的 15 个块规模下 500/100 的效果足够好，文档更长时可以考虑按小节（<code class="inline">▌</code> 标题）切。</div>
+</section>
+
+<section id="s3">
+  <div class="sec-head">
+    <div class="sec-num">03</div>
+    <h2>向量入库：embeddinggemma → Redis Stack</h2>
+    <span class="tag">INDEX</span>
+  </div>
+
+  <p>入库这一步做三件事：删旧索引（保证脚本可重复跑）、建索引、写向量。
+    索引配置是 <code class="inline">HNSW</code> 图索引 + <code class="inline">COSINE</code> 距离，
+    维度 768 对齐 embeddinggemma 的输出；元数据三个字段：
+    <code class="inline">source</code>（tag）、<code class="inline">page</code>（tag）、
+    <code class="inline">chunk</code>（numeric），前两个能做等值过滤。</p>
+
+  <div class="block">
+    <div class="block-bar">
+      <span class="dot"></span>
+      <span class="fname">03_index_redis.py</span>
+      <span class="lang">PYTHON</span>
+      <button class="copy">copy</button>
+    </div>
+    <pre class="lang-py">&quot;&quot;&quot;Step 3：embeddinggemma 向量化 → 写入 Redis Stack（HNSW + COSINE）。&quot;&quot;&quot;
+
+import os
+from pathlib import Path
+
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_redis import RedisConfig, RedisVectorStore
+from langchain_ollama import OllamaEmbeddings
+from pypdf import PdfReader
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PDF_PATH = os.getenv(&quot;REPORT_PDF&quot;, str(PROJECT_ROOT / &quot;assets&quot; / &quot;report.pdf&quot;))
+REDIS_URL = os.getenv(&quot;REDIS_STACK_URL&quot;, &quot;redis://localhost:26379&quot;)
+EMBED_MODEL = os.getenv(&quot;EMBED_MODEL&quot;, &quot;embeddinggemma&quot;)
+INDEX_NAME = &quot;report_rag_index&quot;
+
+CHUNK_SIZE = 500
+CHUNK_OVERLAP = 100
+SEPARATORS = [&quot;\n\n&quot;, &quot;\n&quot;, &quot;。&quot;, &quot;；&quot;, &quot;，&quot;, &quot;&quot;, &quot; &quot;]
+
+print(&quot;=&quot; * 64)
+print(&quot;  Step 3  写入 Redis Stack 向量索引&quot;)
+print(&quot;=&quot; * 64)
+
+# --- 载入 + 切分（与 02 完全一致的参数）---
+reader = PdfReader(PDF_PATH)
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP, separators=SEPARATORS
+)
+documents = []
+for i, page in enumerate(reader.pages, 1):
+    text = (page.extract_text() or &quot;&quot;).strip()
+    for j, piece in enumerate(splitter.split_text(text), 1):
+        documents.append(
+            Document(
+                page_content=piece,
+                metadata={&quot;source&quot;: Path(PDF_PATH).name, &quot;page&quot;: i, &quot;chunk&quot;: j},
+            )
+        )
+print(f&quot;\n[0] 待入库块数: {len(documents)}&quot;)
+
+# --- 幂等：先删旧索引 ---
+import redis
+
+client = redis.Redis.from_url(REDIS_URL, decode_responses=True, socket_timeout=5)
+try:
+    client.ft(INDEX_NAME).dropindex(delete_documents=True)
+    print(f&quot;[1] 已删除旧索引 {INDEX_NAME}&quot;)
+except Exception:
+    print(f&quot;[1] 索引 {INDEX_NAME} 不存在，首次创建&quot;)
+
+config = RedisConfig(
+    index_name=INDEX_NAME,
+    redis_url=REDIS_URL,
+    distance_metric=&quot;COSINE&quot;,
+    indexing_algorithm=&quot;HNSW&quot;,
+    embedding_dimensions=768,
+    metadata_schema=[
+        {&quot;name&quot;: &quot;source&quot;, &quot;type&quot;: &quot;tag&quot;},
+        {&quot;name&quot;: &quot;page&quot;, &quot;type&quot;: &quot;tag&quot;},
+        {&quot;name&quot;: &quot;chunk&quot;, &quot;type&quot;: &quot;numeric&quot;},
+    ],
+)
+store = RedisVectorStore(embeddings=OllamaEmbeddings(model=EMBED_MODEL), config=config)
+
+keys = store.add_documents(documents)
+print(f&quot;[2] 写入 {len(keys)} 条，索引名 {INDEX_NAME}，key 前缀 {store.key_prefix}&quot;)
+print(f&quot;    示例 key: {keys[0]}&quot;)
+
+info = client.ft(INDEX_NAME).info()
+print(f&quot;\n[3] FT.INFO: num_docs={info[&#x27;num_docs&#x27;]}  &quot;
+      f&quot;num_records={info[&#x27;num_records&#x27;]}  &quot;
+      f&quot;hash_indexing_failures={info[&#x27;hash_indexing_failures&#x27;]}&quot;)
+print(f&quot;    幻灯片式确认: FT._LIST -&gt; {client.execute_command(&#x27;FT._LIST&#x27;)}&quot;)</pre>
+  </div>
+
+  <div class="block">
+    <div class="block-bar">
+      <span class="dot"></span>
+      <span class="fname">python 03_index_redis.py</span>
+      <span class="lang">OUTPUT</span>
+      <button class="copy">copy</button>
+    </div>
+    <pre class="lang-out">================================================================
+  Step 3  写入 Redis Stack 向量索引
+================================================================
+
+[0] 待入库块数: 15
+[1] 已删除旧索引 report_rag_index
+[2] 写入 15 条，索引名 report_rag_index，key 前缀 report_rag_index
+    示例 key: report_rag_index:01M40WHSQXW5CY4Q7MZ82KV18M
+
+[3] FT.INFO: num_docs=15  num_records=875  hash_indexing_failures=0
+    幻灯片式确认: FT._LIST -&gt; [&#x27;report_rag_index&#x27;, &#x27;ollama_rag_demo&#x27;, &#x27;my_index11&#x27;]</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <div class="principle">
+    <div class="p-label">PRINCIPLE 03</div>
+    <h4>幂等：先 dropindex 再建，脚本才能随便重跑</h4>
+    <p><code class="inline">dropindex(delete_documents=True)</code> 把旧索引连数据一起删掉，
+      第二次运行时打印「已删除旧索引」，第一次打印「首次创建」——两种都退出码 0。
+      不做这一步，重复跑脚本会不断往同一个索引里堆重复块，
+      检索结果会被同一篇文章的旧副本刷屏。最后用
+      <code class="inline">FT._LIST</code> 确认：索引里现在有
+      <code class="inline">report_rag_index</code>、<code class="inline">ollama_rag_demo</code>、
+      <code class="inline">my_index11</code> 三个，前两个是本文和上一篇实验留下的。</p>
+  </div>
+
+  <div class="callout"><b>性能：</b>15 个块、768 维，整段
+    <code class="inline">load → split → embed → 写入</code> 实测 8.9 秒，
+    其中大头是 embeddinggemma 逐批算向量。FT.INFO 显示
+    <code class="inline">num_docs=15</code>、<code class="inline">hash_indexing_failures=0</code>，
+    没有索引失败的文档。</div>
+</section>
+
+<section id="s4">
+  <div class="sec-head">
+    <div class="sec-num">04</div>
+    <h2>相似度检索：三个查询 + 一次页码过滤</h2>
+    <span class="tag">SEARCH</span>
+  </div>
+
+  <p>索引建好后先别急着接大模型，单独验证检索。
+    脚本跑了三个查询，每个取 top-3，打印距离与相似度；最后用
+    <code class="inline">Tag("page") == "2"</code> 演示元数据过滤——只允许在第 2 页里找。</p>
+
+  <div class="block">
+    <div class="block-bar">
+      <span class="dot"></span>
+      <span class="fname">04_search.py</span>
+      <span class="lang">PYTHON</span>
+      <button class="copy">copy</button>
+    </div>
+    <pre class="lang-py">&quot;&quot;&quot;Step 4：对 report.pdf 的向量索引做相似度检索（含页码过滤）。&quot;&quot;&quot;
+
+import os
+
+from langchain_redis import RedisConfig, RedisVectorStore
+from langchain_ollama import OllamaEmbeddings
+from redisvl.query.filter import Tag
+
+REDIS_URL = os.getenv(&quot;REDIS_STACK_URL&quot;, &quot;redis://localhost:26379&quot;)
+EMBED_MODEL = os.getenv(&quot;EMBED_MODEL&quot;, &quot;embeddinggemma&quot;)
+INDEX_NAME = &quot;report_rag_index&quot;
+
+print(&quot;=&quot; * 64)
+print(&quot;  Step 4  相似度检索 report_rag_index&quot;)
+print(&quot;=&quot; * 64)
+
+config = RedisConfig(
+    index_name=INDEX_NAME,
+    redis_url=REDIS_URL,
+    from_existing=True,
+    distance_metric=&quot;COSINE&quot;,
+    indexing_algorithm=&quot;HNSW&quot;,
+    embedding_dimensions=768,
+)
+store = RedisVectorStore(embeddings=OllamaEmbeddings(model=EMBED_MODEL), config=config)
+
+QUERIES = [
+    &quot;胜蓝股份是做什么的？现在的投资评级&quot;,
+    &quot;2026 到 2028 年净利润预测是多少&quot;,
+    &quot;液冷业务进展如何&quot;,
+]
+
+for q in QUERIES:
+    print(f&quot;\n[查询] {q}&quot;)
+    for i, (doc, score) in enumerate(
+        store.similarity_search_with_score(q, k=3), 1
+    ):
+        preview = doc.page_content[:50].replace(&quot;\n&quot;, &quot; &quot;)
+        print(f&quot;    {i}. 距离={score:.4f} 相似度≈{1 - score:.4f} &quot;
+              f&quot;[p{doc.metadata[&#x27;page&#x27;]}#{doc.metadata[&#x27;chunk&#x27;]}] {preview}...&quot;)
+
+print(&quot;\n[元数据过滤] 只在第 2 页里找「液冷」&quot;)
+filt = Tag(&quot;page&quot;) == &quot;2&quot;
+for i, (doc, score) in enumerate(
+    store.similarity_search_with_score(&quot;液冷业务&quot;, k=2, filter=filt), 1
+):
+    preview = doc.page_content[:50].replace(&quot;\n&quot;, &quot; &quot;)
+    print(f&quot;    {i}. 距离={score:.4f} [p{doc.metadata[&#x27;page&#x27;]}] {preview}...&quot;)</pre>
+  </div>
+
+  <div class="block">
+    <div class="block-bar">
+      <span class="dot"></span>
+      <span class="fname">python 04_search.py</span>
+      <span class="lang">OUTPUT</span>
+      <button class="copy">copy</button>
+    </div>
+    <pre class="lang-out">================================================================
+  Step 4  相似度检索 report_rag_index
+================================================================
+
+[查询] 胜蓝股份是做什么的？现在的投资评级
+    1. 距离=0.4620 相似度≈0.5380 [p1#1] 2026 年 09 月 30 日  高速背板连接器 新贵，业绩即将进入 快速增长 期  —胜蓝股份 ...
+    2. 距离=0.4730 相似度≈0.5270 [p1#4] 机柜高速线缆部件项目 ，该项目预计今年下半年开始陆续交 付，有望带动公司业绩进入快速增长期。  ▌ ...
+    3. 距离=0.5305 相似度≈0.4695 [p1#3] 主可控和国产替代 显得尤为重要。 胜蓝股份 专注于电子连接 器及线缆组件、精密结构件的研发、生产与销...
+
+[查询] 2026 到 2028 年净利润预测是多少
+    1. 距离=0.4290 相似度≈0.5710 [p3#4] 公允价值变动 0 0 0 0  投资收益 14 20 24 26  营业利润 118 260 773...
+    2. 距离=0.4374 相似度≈0.5626 [p3#3] 折旧摊销 65 63 72 76  公允价值变动 0 0 0 0  营运资金变动 -34 -82 -...
+    3. 距离=0.4613 相似度≈0.5387 [p2#2] 连接器下游需求低于预期的风险、市场竞争加剧的风险、 国 内市场拓展及项目执行低于预期的风险 、液冷产...
+
+[查询] 液冷业务进展如何
+    1. 距离=0.5508 相似度≈0.4492 [p1#4] 机柜高速线缆部件项目 ，该项目预计今年下半年开始陆续交 付，有望带动公司业绩进入快速增长期。  ▌ ...
+    2. 距离=0.6008 相似度≈0.3992 [p2#1] 证券研究报告       请阅读最后一页重要免责声明 2  诚信、专业、稳健、高效      公司依...
+    3. 距离=0.6320 相似度≈0.3680 [p2#2] 连接器下游需求低于预期的风险、市场竞争加剧的风险、 国 内市场拓展及项目执行低于预期的风险 、液冷产...
+
+[元数据过滤] 只在第 2 页里找「液冷」
+    1. 距离=0.6787 [p2] 证券研究报告       请阅读最后一页重要免责声明 2  诚信、专业、稳健、高效      公司依...
+    2. 距离=0.7101 [p2] 连接器下游需求低于预期的风险、市场竞争加剧的风险、 国 内市场拓展及项目执行低于预期的风险 、液冷产...</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>查询</th><th>Top-1 距离</th><th>相似度 ≈ 1 − 距离</th><th>捞到的内容</th></tr></thead>
+      <tbody>
+        <tr><td>胜蓝股份是做什么的？现在的投资评级</td><td>0.4620</td><td><b class="red">0.538</b></td><td>首页标题 + 买入(维持) 所在块</td></tr>
+        <tr><td>2026 到 2028 年净利润预测是多少</td><td>0.4290</td><td><b class="red">0.571</b></td><td>第 3 页财务表数据</td></tr>
+        <tr><td>液冷业务进展如何</td><td>0.5508</td><td>0.449</td><td>第 1 页液冷订单段落</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="principle teal">
+    <div class="p-label">PRINCIPLE 04</div>
+    <h4>看相似度的<strong>相对差</strong>，别看绝对值</h4>
+    <p>embeddinggemma 输出的余弦相似度大多落在 0.35 ~ 0.6 这个窄区间，
+      0.57 不代表「很像」，只代表「在本次候选里排第一」。
+      有效的判断方式是看 top-1 和 top-3 差多少：第一个查询 0.538 对 0.470，
+      差距明显，说明头部结果稳定；「液冷业务」三条 0.449 / 0.399 / 0.368 接近，
+      说明这个查询的语义在文档里本来就分散，检索置信度一般。</p>
+  </div>
+
+  <div class="callout"><b>过滤的作用：</b>页码过滤那次，两条结果都是
+    <code class="inline">[p2]</code>——向量库先按条件圈定候选集，再在候选集内做 KNN。
+    真实业务里这就是「只在指定合同/章节里找答案」的实现方式，成本只是一个 tag 条件。</div>
+</section>
+
+<section id="s5">
+  <div class="sec-head">
+    <div class="sec-num">05</div>
+    <h2>RAG 问答链：检索 top-4 + minicpm2b:4 作答</h2>
+    <span class="tag">GENERATE</span>
+  </div>
+
+  <p>最后用 LCEL 把两条路径接起来：检索器负责喂上下文，提示词负责约束
+    「只根据资料回答、标页码、没有就说不知道」，
+    <code class="inline">ChatOllama(model="minicpm2b:4", temperature=0)</code> 负责生成。</p>
+
+  <div class="block">
+    <div class="block-bar">
+      <span class="dot"></span>
+      <span class="fname">05_rag_chain.py</span>
+      <span class="lang">PYTHON</span>
+      <button class="copy">copy</button>
+    </div>
+    <pre class="lang-py">&quot;&quot;&quot;Step 5：完整 RAG —— Redis Stack 检索 + minicpm2b:4 生成回答（LCEL）。&quot;&quot;&quot;
+
+import os
+
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_ollama import ChatOllama, OllamaEmbeddings
+from langchain_redis import RedisConfig, RedisVectorStore
+
+REDIS_URL = os.getenv(&quot;REDIS_STACK_URL&quot;, &quot;redis://localhost:26379&quot;)
+EMBED_MODEL = os.getenv(&quot;EMBED_MODEL&quot;, &quot;embeddinggemma&quot;)
+CHAT_MODEL = os.getenv(&quot;CHAT_MODEL&quot;, &quot;minicpm2b:4&quot;)
+INDEX_NAME = &quot;report_rag_index&quot;
+TOP_K = 4
+
+print(&quot;=&quot; * 64)
+print(&quot;  Step 5  RAG 链：Redis 检索 + minicpm2b:4 生成&quot;)
+print(&quot;=&quot; * 64)
+
+config = RedisConfig(
+    index_name=INDEX_NAME,
+    redis_url=REDIS_URL,
+    from_existing=True,
+    distance_metric=&quot;COSINE&quot;,
+    indexing_algorithm=&quot;HNSW&quot;,
+    embedding_dimensions=768,
+)
+store = RedisVectorStore(embeddings=OllamaEmbeddings(model=EMBED_MODEL), config=config)
+retriever = store.as_retriever(search_kwargs={&quot;k&quot;: TOP_K})
+
+
+def format_docs(docs) -&gt; str:
+    return &quot;\n\n&quot;.join(
+        f&quot;[第{d.metadata.get(&#x27;page&#x27;, &#x27;?&#x27;)}页] {d.page_content}&quot; for d in docs
+    )
+
+
+prompt = ChatPromptTemplate.from_template(
+    &quot;你是证券研究报告问答助手。请仅根据下方参考资料回答问题，&quot;
+    &quot;引用数据时标明来自第几页；若资料中没有答案就直说不知道，不要编造。\n\n&quot;
+    &quot;参考资料：\n{context}\n\n问题：{question}&quot;
+)
+
+chain = (
+    {&quot;context&quot;: retriever | format_docs, &quot;question&quot;: lambda x: x}
+    | prompt
+    | ChatOllama(model=CHAT_MODEL, temperature=0)
+    | StrOutputParser()
+)
+
+print(f&quot;\n[配置] 索引={INDEX_NAME}  top_k={TOP_K}  &quot;
+      f&quot;嵌入={EMBED_MODEL}  生成={CHAT_MODEL}&quot;)
+
+for question in [
+    &quot;胜蓝股份的主营业务是什么？这份研报给出的投资评级和目标判断是什么？&quot;,
+    &quot;研报预测 2026-2028 年的净利润和 EPS 分别是多少？&quot;,
+    &quot;报告里提到了哪些风险？&quot;,
+]:
+    print(f&quot;\n{&#x27;-&#x27; * 60}&quot;)
+    print(f&quot;[问题] {question}&quot;)
+    docs = retriever.invoke(question)
+    print(f&quot;[检索 top-{TOP_K}]&quot;)
+    for i, d in enumerate(docs, 1):
+        preview = d.page_content[:40].replace(&quot;\n&quot;, &quot; &quot;)
+        print(f&quot;    {i}. p{d.metadata[&#x27;page&#x27;]} 距离检索 | {preview}...&quot;)
+    print(&quot;[回答]&quot;)
+    answer = chain.invoke(question)
+    for line in answer.splitlines():
+        print(f&quot;    {line}&quot;)</pre>
+  </div>
+
+  <p>三个问题一次跑完（整段耗时 1 分 42 秒），下面是<strong>完整未删改</strong>的终端输出，
+    包含 minicpm2b:4 的思考过程和它答错的第一题：</p>
+
+  <div class="block">
+    <div class="block-bar">
+      <span class="dot"></span>
+      <span class="fname">python 05_rag_chain.py</span>
+      <span class="lang">OUTPUT</span>
+      <button class="copy">copy</button>
+    </div>
+    <pre class="lang-out">================================================================
+  Step 5  RAG 链：Redis 检索 + minicpm2b:4 生成
+================================================================
+
+[配置] 索引=report_rag_index  top_k=4  嵌入=embeddinggemma  生成=minicpm2b:4
+
+------------------------------------------------------------
+[问题] 胜蓝股份的主营业务是什么？这份研报给出的投资评级和目标判断是什么？
+[检索 top-4]
+    1. p1 距离检索 | 2026 年 09 月 30 日  高速背板连接器 新贵，业绩即将进入 快速增长...
+    2. p1 距离检索 | 机柜高速线缆部件项目 ，该项目预计今年下半年开始陆续交 付，有望带动公司业绩进入...
+    3. p4 距离检索 | 2 增持 10% — 20%  3 中性 -10% — 10%  4 卖出 &lt; ...
+    4. p1 距离检索 | 主可控和国产替代 显得尤为重要。 胜蓝股份 专注于电子连接 器及线缆组件、精密结...
+[回答]
+    &lt;think&gt;
+    好的，用户问的是关于胜蓝股份的两件事：主营业务是什么，以及投资评级和目标判断。我需要从提供的参考资料中找到相关信息来回答。
+    
+    首先看第一部分，主营业务。资料里提到公司专注于电子连接器及线缆组件、精密结构件的研发生产销售，产品应用于数据通讯、消费类电子、新能源汽车等领域。然后具体说明数据通讯类业务聚焦AI服务器等，整合了224G高速背板连接器、光模块笼子、高速外部互连线缆等产品。营收增长情况也提到了2026上半年数据通讯类实现营收1.06亿元。
+    
+    第二部分是关于投资评级和目标判断的。我看到有四个选项：增持10%-20%、中性-10%到10%、卖出小于-10%。但资料中没有明确给出具体的评级或目标价，只列出了这些区间供投资者参考。免责条款也表明这是华鑫证券的研究报告。
+    
+    所以我的回答应该基于这些信息来组织，先说明主营业务范围和具体产品，再解释投资评级的选项范围而不声称有具体结论。
+    &lt;/think&gt;
+    
+    根据提供的资料：
+    
+    **1. 胜蓝股份的主营业务是什么？**
+    公司专注于 **电子连接器及线缆组件、精密结构件** 的研发、生产与销售。核心应用领域包括：
+    *   **数据通讯**：聚焦AI服务器、交换机、存储阵列整机互连解决方案，核心产品涵盖224G高速背板连接器、光模块笼子、高速外部互连线缆等。
+    *   其他领域：消费类电子、新能源汽车等。
+    
+    **2. 投资评级和目标判断是什么？**
+    这份研报给出了四种选择：
+    *   **增持**：建议在当前价格基础上增加10%-20%。
+    *   **中性**：建议持有，预期涨幅为-10%到+10%。
+    *   **卖出**：建议减持，预期跌幅超过-10%。
+    
+    需要注意的是，这份报告并未给出具体的投资评级或目标价，仅列出了上述四种选择及其对应的区间。
+
+------------------------------------------------------------
+[问题] 研报预测 2026-2028 年的净利润和 EPS 分别是多少？
+[检索 top-4]
+    1. p3 距离检索 | 公允价值变动 0 0 0 0  投资收益 14 20 24 26  营业利润 1...
+    2. p3 距离检索 | 折旧摊销 65 63 72 76  公允价值变动 0 0 0 0  营运资金变动...
+    3. p3 距离检索 | 证券研究报告       请阅读最后一页重要免责声明 3  诚信、专业、稳健、高...
+    4. p2 距离检索 | 连接器下游需求低于预期的风险、市场竞争加剧的风险、 国 内市场拓展及项目执行低于...
+[回答]
+    &lt;think&gt;
+    好的，用户问的是关于一份财务报告的未来预测数据。我需要从提供的参考资料中找到2026到2028年的净利润和EPS的具体数值。
+    
+    首先，我看到第3页有一个&quot;主要财务指标&quot;的表格，其中包含了&quot;归母净利润增长率&quot;和&quot;摊薄每股收益（元）&quot;这两项。让我仔细查看这些数据。
+    
+    在第3页的表格中，归母净利润在2026E是245，2027E是730，2028E是1,166。EPS方面，2026E是1.44，2027E是4.30，2028E是6.87。这些都来自同一张表。
+    
+    不过我还需要确认一下这些数据是否准确对应年份。表格的列分别是2025A、2026E、2027E和2028E，所以上面的数字应该就是正确的答案。
+    
+    另外，用户还问到的是&quot;净利润和EPS&quot;，而不仅仅是增长率。我需要同时给出这两项的具体数值。
+    
+    看起来第3页的数据是最直接的来源，因为这是主要财务指标所在的页面。其他页面可能也有相关数据，但第3页的信息最清晰完整。
+    
+    所以我的回答应该是：根据第3页的数据，2026-2028年的归母净利润分别是245、730和1166万元；摊薄每股收益分别是1.44元、4.30元和6.87元。这样就能直接回答用户的问题了。
+    &lt;/think&gt;
+    
+    根据参考资料第3页&quot;主要财务指标&quot;表格中的数据：
+    
+    **归母净利润（百万元）：**
+    - 2026E：245
+    - 2027E：730
+    - 2028E：1,166
+    
+    **摊薄每股收益（元）：**
+    - 2026E：1.44
+    - 2027E：4.30
+    - 2028E：6.87
+
+------------------------------------------------------------
+[问题] 报告里提到了哪些风险？
+[检索 top-4]
+    1. p5 距离检索 | 证券研究报告       请阅读最后一页重要免责声明 5  诚信、专业、稳健、高...
+    2. p5 距离检索 | 问或者金融产品等服务。本公司在知晓范围内依法合规地履行披露。  本报告中的资料、...
+    3. p2 距离检索 | 连接器下游需求低于预期的风险、市场竞争加剧的风险、 国 内市场拓展及项目执行低于...
+    4. p4 距离检索 | 2 增持 10% — 20%  3 中性 -10% — 10%  4 卖出 &lt; ...
+[回答]
+    &lt;think&gt;
+    好的，用户问的是报告中提到的风险，我需要从参考资料中找出相关内容。
+    
+    首先看第2页，这里明确列出了连接器下游需求低于预期的风险、市场竞争加剧的风险、国内市场拓展及项目执行低于预期的风险，还有液冷产品拓展低于预期的风险，以及与台湾客户合作低于预期的风险。宏观经济下行也是一个风险点。
+    
+    这些信息都来自第二页，所以回答时应该直接引用这个来源。不需要额外解释或扩展，因为用户只要的是具体提到的风险列表。
+    &lt;/think&gt;
+    
+    根据参考资料第2页，报告里提到的主要风险包括：
+    
+    - 连接器下游需求低于预期的风险
+    - 市场竞争加剧的风险
+    - 国内市场拓展及项目执行低于预期的风险
+    - 液冷产品拓展低于预期的风险
+    - 与台湾客户合作低于预期的风险
+    - 宏观经济下行的风险</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <div class="principle">
+    <div class="p-label">PRINCIPLE 05</div>
+    <h4>答对的两题：数据在第 3 页，风险在第 2 页</h4>
+    <p>第二题（2026-2028 净利润与 EPS）模型从第 3 页「主要财务指标」表里读出
+      245 / 730 / 1,166 百万元、EPS 1.44 / 4.30 / 6.87 元，与研报第 2 页正文的
+      2.45 / 7.30 / 11.66 亿元完全对得上。第三题（风险提示）列的六条风险
+      与第 2 页原文一致，并且标了页码。这两题检索和生成都工作正常。</p>
+  </div>
+
+  <div class="principle teal">
+    <div class="p-label">PRINCIPLE 06</div>
+    <h4>答错的第一题：检索召回了，是模型没看见</h4>
+    <p>第一题问投资评级，正确答案是首页的「买入(维持)」。
+      我事后单独验证过：被检索进上下文的 top-1 块（<code class="inline">p1#1</code>）
+      里<strong>确实包含「买入(维持)」四个字</strong>。但 minicpm2b:4 在思考段里说
+      「资料中没有明确给出具体的评级」，转头把第 4 页那张
+      <em>评级说明表</em>（增持 10%–20% / 中性 / 卖出的定义）当成了研报给出的评级。
+      这是纯粹的生成环节失误，检索环节没有责任——细节见第 06 节坑 03。</p>
+  </div>
+
+  <div class="callout"><b>观察：</b>minicpm2b:4 会把思考过程和正文一起吐在
+    <code class="inline">content</code> 里，所以输出中先出现一整段第一人称推理，
+    再出现 Markdown 格式的正式回答。用 <code class="inline">StrOutputParser()</code>
+    接收时两者都会被打印——本文原样保留，没有做清洗。</div>
+</section>
+
+<section id="s6">
+  <div class="sec-head">
+    <div class="sec-num">06</div>
+    <h2>踩坑复盘与项目结构</h2>
+    <span class="tag">RETRO</span>
+  </div>
+
+  <div class="pitfall">
+    <div class="no">01</div>
+    <div class="body">
+      <h5>系统 Python 没有 redis 包，脚本第一步就 ModuleNotFoundError</h5>
+      <p>机器上 <code class="inline">/usr/bin/python3</code> 是 3.14，装了 langchain 却没装
+        <code class="inline">redis</code>；真正齐备的是 conda 环境
+        <code class="inline">zeroai</code>（Python 3.10，redis 5.3.1 + langchain-redis 0.2.5 + redisvl）。
+        本文所有命令都是
+        <code class="inline">/home/king/miniconda3/envs/zeroai/bin/python</code> 跑的。
+        教训：动手前先 <code class="inline">python -c "import redis"</code> 验证环境，
+        否则会以为是 Redis 服务的问题，白折腾半天。</p>
+    </div>
+  </div>
+
+  <div class="pitfall">
+    <div class="no">02</div>
+    <div class="body">
+      <h5>pypdf 把财务报表拉平，行列关系丢失</h5>
+      <p>第 3 页的利润表抽出来是「营业利润 118 260 773…」这种一行行裸数字，
+        不知道哪列是 2026E、哪列是 2027E。检索时 top-1 捞到的正是这种块，
+        模型这次靠块里的年份表头猜对了年份，但属于运气。
+        要根治得上版面解析（unstructured 的 hi-res 策略，env 里已装，
+        代价是 5 页要跑几十秒到几分钟，还要下模型）。
+        本次按「pypdf 纯文本」验收，问题如实记录在这里。</p>
+    </div>
+  </div>
+
+  <div class="pitfall">
+    <div class="no">03</div>
+    <div class="body">
+      <h5>2.5B 模型答错评级题：把「评级说明表」当成「评级」</h5>
+      <p>上下文里明明有「买入(维持)」，minicpm2b:4 却得出「报告未给出具体评级」，
+        还把第 4 页的评级定义当成研报的观点。这说明小模型在
+        「资料 A 是定义、资料 B 才是结论」这类区分上很吃力。
+        可行的补救：提示词里显式点名「投资评级通常位于首页标题下方，形如『买入(维持)』」，
+        或换 16B 版本（<code class="inline">minicpm2b:16</code> 已 pull）重跑对照。
+        本文不掩盖失败，原始输出原样贴在第 05 节。</p>
+    </div>
+  </div>
+
+  <div class="pitfall">
+    <div class="no">04</div>
+    <div class="body">
+      <h5>思考过程混进最终回答，输出不好看</h5>
+      <p>minicpm2b:4 把整段推理写进 <code class="inline">content</code>，
+        三题跑完终端刷了 99 行。教学演示里原样保留反而更有说服力，
+        但真做产品要在中间加一层输出清洗，或改用模型的 reasoning 专用字段。
+        另外 3 个问题串行跑 1 分 42 秒，瓶颈在生成端——本地 2.5B 模型
+        逐 token 解码，问答类负载想提速得开 <code class="inline">num_ctx</code> 限制或并发。</p>
+    </div>
+  </div>
+
+  <h3>项目结构</h3>
+  <div class="tree">
+  <b>zeroAI/rag_report_pdf/</b>
+  ├── 01_load_pdf.py      <span class="dim">← 第 01 节 · pypdf 解析</span>
+  ├── 01_load_pdf.log     <span class="dim">← 真实运行输出</span>
+  ├── 02_split.py         <span class="dim">← 第 02 节 · 500/100 中文切分</span>
+  ├── 03_index_redis.py   <span class="dim">← 第 03 节 · HNSW 入库</span>
+  ├── 04_search.py        <span class="dim">← 第 04 节 · KNN + 页码过滤</span>
+  ├── 05_rag_chain.py     <span class="dim">← 第 05 节 · LCEL 问答链</span>
+  └── *.log               <span class="dim">← 每个脚本的终端记录</span>
+  </div>
+
+  <h3>按顺序复跑</h3>
+  <div class="block">
+    <div class="block-bar">
+      <span class="dot"></span>
+      <span class="fname">复跑顺序 · TERMINAL</span>
+      <span class="lang">BASH</span>
+      <button class="copy">copy</button>
+    </div>
+    <pre class="lang-bash">P=/home/king/miniconda3/envs/zeroai/bin/python
+cd /home/king/桌面/project/zeroAI/rag_report_pdf
+
+# 前置：Ollama 在跑、redis-stack 容器在跑（端口 26379）
+$P 01_load_pdf.py     # 5 页 → 5 个 Document
+$P 02_split.py        # 5556 字 → 15 个块
+$P 03_index_redis.py  # 写入 report_rag_index（可重复执行）
+$P 04_search.py       # 3 个查询 + 1 次页码过滤
+$P 05_rag_chain.py    # 3 问 3 答，约 1 分 42 秒</pre>
+  </div>
+  <div class="callout"><b>说明：</b>以上命令即本文实际执行顺序，
+    每条都退出码 0，输出已分别贴在第 01–05 节。</div>
+
+  <div class="principle teal">
+    <div class="p-label">CONCLUSION</div>
+    <h4>链路通了，短板在模型不在基础设施</h4>
+    <p>5 个脚本全部退出码 0，索引可重复重建，检索稳定，页码过滤可用，
+      三题中两题答案与原文完全一致。唯一一次答错发生在生成端，
+      而检索端已经把正确答案送到了模型嘴边。
+      下一步的性价比排序是：换 <code class="inline">minicpm2b:16</code> 对照 →
+      提示词点名评级位置 → 上版面解析修表格，而不是继续调向量库。</p>
+  </div>
+</section>
+
+</main>
+</div>
+
+<div class="wrap">
+  <footer>
+    <span>本地 RAG 实战：Ollama + Redis Stack 把券商研报变成能追问的知识库</span>
+    <span>ALL OUTPUTS VERIFIED BY REAL EXECUTION · 2026-10-03</span>
+  </footer>
+</div>
+
+<button id="top" title="回到顶部">↑</button>
+
+<script>
+/* ---------- 进度条 + 回顶 ---------- */
+const prog = document.getElementById('progress');
+const topBtn = document.getElementById('top');
+addEventListener('scroll', () => {
+  const h = document.documentElement;
+  const p = h.scrollTop / (h.scrollHeight - h.clientHeight);
+  prog.style.width = (p * 100) + '%';
+  topBtn.classList.toggle('show', h.scrollTop > 600);
+}, {passive: true});
+topBtn.onclick = () => scrollTo({top: 0, behavior: 'smooth'});
+
+/* ---------- TOC scrollspy ---------- */
+const tocLinks = [...document.querySelectorAll('#toc a')];
+const secs = tocLinks.map(a => document.querySelector(a.getAttribute('href')));
+const spy = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      const id = '#' + e.target.id;
+      tocLinks.forEach(a => a.classList.toggle('on', a.getAttribute('href') === id));
+    }
+  });
+}, {rootMargin: '-15% 0px -70% 0px'});
+secs.forEach(s => s && spy.observe(s));
+
+/* ---------- 轻量语法高亮 ---------- */
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+const PY_KW = new Set(('from import def return for in if elif else while not and or None True False '
+  + 'lambda with as class try except raise pass yield is del global assert break continue async await').split(' '));
+const PY_BUILTIN = new Set(('print len range float str int list dict set tuple enumerate zip sum min max '
+  + 'open isinstance type super self repr sorted any all').split(' '));
+
+const PY_RE = /(?:[rRuUbBfF]{1,2}(?:"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|"""[\s\S]*?"""|'''[\s\S]*?'''|#[^\n]*|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|\b\d+(?:\.\d+)?\b|[A-Za-z_][A-Za-z0-9_]*)/g;
+
+function hlPy(code){
+  let out = '', last = 0, m;
+  PY_RE.lastIndex = 0;
+  while ((m = PY_RE.exec(code)) !== null) {
+    out += esc(code.slice(last, m.index));
+    const t = m[0];
+    let cls = '';
+    if (t[0] === '#') cls = 'tok-c';
+    else if (/^(?:[rRuUbBfF]{1,2})?["']/.test(t) || t.startsWith('"""') || t.startsWith("'''")) cls = 'tok-s';
+    else if (/^\d/.test(t)) cls = 'tok-n';
+    else if (PY_KW.has(t)) cls = 'tok-k';
+    else {
+      const rest = code.slice(m.index + t.length);
+      if (/^\s*\(/.test(rest)) cls = 'tok-f';
+      else if (PY_BUILTIN.has(t)) cls = 'tok-f';
+      else cls = '';
+    }
+    out += cls ? '<span class="' + cls + '">' + esc(t) + '</span>' : esc(t);
+    last = m.index + t.length;
+  }
+  out += esc(code.slice(last));
+  return out;
+}
+
+const BASH_RE = /("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|#[^\n]*|^\s*\$.*$|\b(?:pip|python|ollama|for|do|done|cd|ls|curl)\b)/gm;
+function hlBash(code){
+  let out = '', last = 0, m;
+  BASH_RE.lastIndex = 0;
+  while ((m = BASH_RE.exec(code)) !== null) {
+    out += esc(code.slice(last, m.index));
+    const t = m[0];
+    let cls = 'tok-c';
+    if (t[0] === '#') cls = 'tok-c';
+    else if (t.trim().startsWith('$')) cls = 'tok-p';
+    else if (t[0] === '"' || t[0] === "'") cls = 'tok-s';
+    else cls = 'tok-f';
+    out += '<span class="' + cls + '">' + esc(t) + '</span>';
+    last = m.index + t.length;
+  }
+  out += esc(code.slice(last));
+  return out;
+}
+
+const OUT_RE = /(\d+\.\d+|\b\d+ms\b|'[^']{0,28}'|\{[^}\n]{0,28}\}|\[[^\]\n]{1,24}\])/g;
+function hlOut(code){
+  let out = '', last = 0, m;
+  OUT_RE.lastIndex = 0;
+  while ((m = OUT_RE.exec(code)) !== null) {
+    out += esc(code.slice(last, m.index));
+    const t = m[0];
+    const cls = /^\d/.test(t) ? 'tok-num' : 'tok-tag';
+    out += '<span class="' + cls + '">' + esc(t) + '</span>';
+    last = m.index + t.length;
+  }
+  out += esc(code.slice(last));
+  return out;
+}
+
+document.querySelectorAll('pre.lang-py').forEach(p => { p.innerHTML = hlPy(p.textContent); });
+document.querySelectorAll('pre.lang-bash').forEach(p => { p.innerHTML = hlBash(p.textContent); });
+document.querySelectorAll('pre.lang-out').forEach(p => { p.innerHTML = hlOut(p.textContent); });
+
+/* ---------- 复制按钮（Clipboard API + execCommand 降级） ---------- */
+function legacyCopy(txt){
+  return new Promise((res, rej) => {
+    const ta = document.createElement('textarea');
+    ta.value = txt;
+    ta.style.cssText = 'position:fixed;top:-999px;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch(e){ ok = false; }
+    ta.remove();
+    ok ? res() : rej(new Error('execCommand failed'));
+  });
+}
+function copyText(txt){
+  return legacyCopy(txt).catch(() => {
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(txt);
+    throw new Error('no copy api');
+  });
+}
+document.querySelectorAll('.copy').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const pre = btn.closest('.block').querySelector('pre');
+    const reset = () => setTimeout(() => btn.textContent = 'copy', 1600);
+    copyText(pre.textContent).then(() => { btn.textContent = '已复制 ✓'; reset(); })
+      .catch(() => {
+        const r = document.createRange();
+        r.selectNodeContents(pre);
+        const sel = getSelection();
+        sel.removeAllRanges(); sel.addRange(r);
+        btn.textContent = '已选中 Ctrl+C'; reset();
+      });
+  });
+});
+</script>
+</body>
+</html>
