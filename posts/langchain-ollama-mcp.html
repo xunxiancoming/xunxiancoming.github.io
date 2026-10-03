@@ -1,0 +1,2029 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LangChain × Ollama MCP 协议与三类上下文实战</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='42' fill='%23d93a1e'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='%23f7f4ec'>M</text></svg>">
+<style>
+
+:root{
+  --paper:#f7f4ec;
+  --paper-2:#efeadd;
+  --ink:#16130e;
+  --ink-2:#4a443a;
+  --ink-3:#7a7264;
+  --vermilion:#d93a1e;
+  --vermilion-deep:#a92a12;
+  --teal:#0f6b62;
+  --rule:rgba(22,19,14,.16);
+  --rule-strong:rgba(22,19,14,.5);
+  --code-bg:#14171c;
+  --code-fg:#c9d1d9;
+  --card:#fffdf7;
+  --shadow:0 2px 0 rgba(22,19,14,.9);
+  --mono:"JetBrains Mono","Fira Code","SF Mono",Consolas,"Liberation Mono",monospace;
+  --serif:"Noto Serif CJK SC","Source Han Serif SC","Songti SC","SimSun",Georgia,serif;
+  --sans:"Noto Sans CJK SC","Source Han Sans SC","PingFang SC","Microsoft YaHei",-apple-system,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#14161a;
+    --paper-2:#1b1e24;
+    --ink:#e9e4d8;
+    --ink-2:#b5aea0;
+    --ink-3:#857e70;
+    --vermilion:#ff6a4d;
+    --vermilion-deep:#ff8f78;
+    --teal:#4fd1c0;
+    --rule:rgba(233,228,216,.16);
+    --rule-strong:rgba(233,228,216,.45);
+    --card:#1a1d23;
+    --shadow:0 2px 0 rgba(0,0,0,.6);
+  }
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;scroll-padding-top:80px}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-size:16.5px;
+  line-height:1.85;
+  -webkit-font-smoothing:antialiased;
+  background-image:
+    linear-gradient(var(--rule) 1px,transparent 1px),
+    linear-gradient(90deg,var(--rule) 1px,transparent 1px);
+  background-size:56px 56px;
+  background-attachment:fixed;
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.35;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+}
+.wrap{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:0 28px}
+a{color:var(--vermilion);text-decoration:none;border-bottom:1px solid transparent;transition:.2s}
+a:hover{border-bottom-color:var(--vermilion)}
+
+/* ---------- progress ---------- */
+#progress{position:fixed;top:0;left:0;height:4px;width:0;background:var(--vermilion);z-index:99;transition:width .1s linear}
+
+/* ---------- hero ---------- */
+header.hero{
+  border-bottom:3px solid var(--ink);
+  padding:72px 0 40px;
+  position:relative;overflow:hidden;
+}
+.hero .eyebrow{
+  font-family:var(--mono);font-size:12.5px;letter-spacing:.34em;text-transform:uppercase;
+  color:var(--vermilion);font-weight:700;margin-bottom:22px;
+  animation:rise .7s .05s both;
+}
+.hero h1{
+  font-family:var(--serif);font-weight:900;
+  font-size:clamp(32px,5vw,58px);line-height:1.16;letter-spacing:-.01em;
+  max-width:16em;animation:rise .7s .15s both;
+}
+.hero h1 em{font-style:normal;color:var(--vermilion);position:relative;white-space:nowrap}
+.hero h1 em::after{
+  content:"";position:absolute;left:0;right:0;bottom:.06em;height:.14em;
+  background:var(--vermilion);opacity:.28;transform:scaleX(0);transform-origin:left;
+  animation:swipe .8s .9s forwards;
+}
+.hero .sub{
+  margin-top:24px;max-width:44em;color:var(--ink-2);font-size:17.5px;
+  animation:rise .7s .3s both;
+}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:32px;animation:rise .7s .45s both}
+.chip{
+  font-family:var(--mono);font-size:12.5px;padding:5px 13px;
+  border:1.5px solid var(--ink);background:var(--card);
+  box-shadow:var(--shadow);
+}
+.chip.hot{background:var(--vermilion);color:#fff;border-color:var(--vermilion-deep)}
+.hero .stamp{
+  position:absolute;right:-8px;top:64px;transform:rotate(9deg);
+  border:3px solid var(--vermilion);color:var(--vermilion);
+  font-family:var(--mono);font-weight:800;font-size:13px;line-height:1.35;
+  padding:10px 16px;text-align:center;letter-spacing:.08em;
+  opacity:.85;border-radius:4px;
+  animation:stampIn .5s 1.1s both;
+}
+@keyframes rise{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:none}}
+@keyframes swipe{to{transform:scaleX(1)}}
+@keyframes stampIn{from{opacity:0;transform:rotate(9deg) scale(1.6)}to{opacity:.85;transform:rotate(9deg) scale(1)}}
+@media(max-width:820px){.hero .stamp{display:none}}
+
+/* ---------- layout with toc ---------- */
+.layout{display:grid;grid-template-columns:210px minmax(0,1fr);gap:46px;padding:52px 0 90px}
+.layout>main{min-width:0}
+@media(max-width:1040px){.layout{grid-template-columns:minmax(0,1fr);gap:0}nav.toc{display:none}}
+nav.toc{position:sticky;top:34px;align-self:start;font-family:var(--mono);font-size:12.5px}
+nav.toc .toc-title{letter-spacing:.28em;color:var(--ink-3);font-size:11px;margin-bottom:14px;font-weight:700}
+nav.toc a{
+  display:block;padding:6px 0 6px 14px;color:var(--ink-2);border:0;
+  border-left:2px solid var(--rule);transition:.18s;line-height:1.5;
+}
+nav.toc a:hover{color:var(--ink);border-left-color:var(--ink-3)}
+nav.toc a.on{color:var(--vermilion);border-left:2px solid var(--vermilion);font-weight:700;background:linear-gradient(90deg,rgba(217,58,30,.09),transparent)}
+
+/* ---------- sections ---------- */
+section{margin-bottom:76px}
+.sec-head{display:flex;align-items:flex-start;gap:18px;border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:30px}
+.sec-num{
+  font-family:var(--mono);font-weight:800;font-size:clamp(38px,7vw,58px);line-height:.9;
+  color:transparent;-webkit-text-stroke:2px var(--ink);flex-shrink:0;
+}
+.sec-head h2{font-family:var(--serif);font-size:clamp(23px,3.4vw,32px);font-weight:800;line-height:1.3;flex:1}
+.sec-head .tag{
+  font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--vermilion);
+  border:1.5px solid var(--vermilion);padding:3px 9px;align-self:center;white-space:nowrap;font-weight:700;
+}
+h3{font-family:var(--serif);font-size:20.5px;font-weight:800;margin:34px 0 12px;display:flex;align-items:center;gap:10px}
+h3::before{content:"";width:14px;height:14px;background:var(--vermilion);flex-shrink:0;clip-path:polygon(0 0,100% 0,100% 65%,65% 100%,0 100%)}
+p{margin:0 0 16px;color:var(--ink-2)}
+p strong,li strong{color:var(--ink);font-weight:700}
+code.inline{
+  font-family:var(--mono);font-size:.87em;background:var(--paper-2);
+  border:1px solid var(--rule);padding:1px 6px;border-radius:3px;color:var(--vermilion-deep);
+  white-space:nowrap;
+}
+ul.list{margin:0 0 18px;padding-left:0;list-style:none}
+ul.list li{position:relative;padding-left:24px;margin-bottom:9px;color:var(--ink-2)}
+ul.list li::before{content:"▸";position:absolute;left:4px;color:var(--vermilion);font-weight:700}
+
+/* ---------- principle card ---------- */
+.principle{
+  background:var(--card);border:1.5px solid var(--ink);border-left:7px solid var(--vermilion);
+  padding:20px 24px;margin:22px 0;box-shadow:var(--shadow);position:relative;
+}
+.principle .p-label{
+  position:absolute;top:-11px;left:16px;background:var(--vermilion);color:#fff;
+  font-family:var(--mono);font-size:11px;font-weight:800;letter-spacing:.2em;padding:2px 10px;
+}
+.principle h4{font-family:var(--serif);font-size:17.5px;margin:6px 0 8px;font-weight:800}
+.principle p{margin-bottom:8px;font-size:15.5px}
+.principle p:last-child{margin-bottom:0}
+.principle.teal{border-left-color:var(--teal)}
+.principle.teal .p-label{background:var(--teal)}
+
+/* ---------- diagram ---------- */
+.diagram{border:2px solid var(--ink);background:var(--card);padding:24px 20px;margin:26px 0;box-shadow:var(--shadow);overflow-x:auto}
+.diagram .lane-title{font-family:var(--mono);font-size:11.5px;letter-spacing:.2em;color:var(--ink-3);font-weight:700;margin-bottom:12px}
+.flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;row-gap:14px}
+.node{
+  border:1.5px solid var(--ink);background:var(--paper);padding:9px 13px;min-width:104px;
+  font-size:13.5px;line-height:1.4;font-weight:600;text-align:center;position:relative;
+}
+.node small{display:block;font-family:var(--mono);font-size:10.5px;color:var(--ink-3);font-weight:400;margin-top:2px}
+.node.persist{border:2.5px solid var(--vermilion);background:rgba(217,58,30,.07)}
+.node.persist small{color:var(--vermilion);font-weight:700}
+.node.model{border-style:dashed}
+.arrow{display:flex;align-items:center;padding:0 9px;color:var(--vermilion);font-size:19px;font-weight:700}
+.lane{margin-bottom:24px}
+.lane:last-child{margin-bottom:0}
+.diagram .legend{margin-top:18px;padding-top:14px;border-top:1px dashed var(--rule);font-size:13px;color:var(--ink-3);font-family:var(--mono);line-height:1.9}
+.diagram .legend b{color:var(--vermilion)}
+
+/* ---------- code & output ---------- */
+.block{margin:22px 0 30px;border:1.5px solid var(--ink);box-shadow:var(--shadow);background:var(--code-bg);position:relative}
+.block-bar{
+  display:flex;align-items:center;gap:12px;padding:8px 14px;
+  background:#0d0f13;border-bottom:1px solid rgba(255,255,255,.1);
+  font-family:var(--mono);font-size:11.5px;color:#8b949e;letter-spacing:.06em;
+}
+.block-bar .dot{width:9px;height:9px;border-radius:50%;background:#ff5f56;box-shadow:14px 0 0 #ffbd2e,28px 0 0 #27c93f;margin-right:30px}
+.block-bar .fname{color:#e6edf3;font-weight:700}
+.block-bar .lang{color:var(--vermilion);border:1px solid var(--vermilion);padding:0 7px;font-size:10.5px;font-weight:700}
+.block-bar .copy{
+  margin-left:auto;cursor:pointer;color:#8b949e;border:1px solid #30363d;
+  padding:2px 10px;font-family:var(--mono);font-size:11px;transition:.15s;background:transparent;
+}
+.block-bar .copy:hover{color:#fff;border-color:var(--vermilion);background:var(--vermilion)}
+pre{
+  margin:0;padding:18px 20px;overflow-x:auto;
+  font-family:var(--mono);font-size:13px;line-height:1.72;color:var(--code-fg);
+  white-space:pre;tab-size:4;
+}
+pre.out{background:#101317;color:#a9b4c0}
+.real-stamp{
+  position:absolute;top:44px;right:14px;transform:rotate(-7deg);
+  border:2.5px solid #ff6a4d;color:#ff6a4d;font-family:var(--mono);font-weight:800;
+  font-size:11px;letter-spacing:.1em;padding:4px 10px;pointer-events:none;
+  background:rgba(16,19,23,.85);border-radius:3px;z-index:2;
+}
+.tok-c{color:#6e7681;font-style:italic}
+.tok-s{color:#7ee787}
+.tok-k{color:#ff7b72;font-weight:600}
+.tok-n{color:#79c0ff}
+.tok-f{color:#d2a8ff}
+.tok-p{color:#ffa657}
+.tok-num{color:#79c0ff;font-weight:700}
+.tok-tag{color:#7ee787}
+
+/* ---------- tables ---------- */
+.tablewrap{overflow-x:auto;margin:22px 0;border:1.5px solid var(--ink);box-shadow:var(--shadow);background:var(--card)}
+table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:600px}
+th,td{padding:11px 15px;text-align:left;border-bottom:1px solid var(--rule)}
+th{background:var(--ink);color:var(--paper);font-family:var(--mono);font-size:12.5px;letter-spacing:.08em;font-weight:700}
+tbody tr:nth-child(even){background:rgba(0,0,0,.025)}
+@media(prefers-color-scheme:dark){tbody tr:nth-child(even){background:rgba(255,255,255,.03)}}
+td:first-child{font-weight:700;color:var(--ink)}
+td b.red{color:var(--vermilion)}
+tbody tr:last-child td{border-bottom:0}
+
+/* ---------- pitfalls ---------- */
+.pitfall{
+  border:1.5px solid var(--rule-strong);background:var(--card);margin-bottom:14px;
+  display:grid;grid-template-columns:56px 1fr;overflow:hidden;
+}
+.pitfall .no{
+  background:repeating-linear-gradient(45deg,var(--vermilion),var(--vermilion) 7px,var(--vermilion-deep) 7px,var(--vermilion-deep) 14px);
+  color:#fff;font-family:var(--mono);font-weight:800;font-size:18px;
+  display:flex;align-items:center;justify-content:center;
+}
+.pitfall .body{padding:14px 18px}
+.pitfall h5{font-family:var(--serif);font-size:16.5px;font-weight:800;margin-bottom:5px}
+.pitfall p{font-size:14.5px;margin:0;color:var(--ink-2)}
+
+/* ---------- appendix ---------- */
+details{border:1.5px solid var(--ink);background:var(--card);margin:16px 0;box-shadow:var(--shadow)}
+details summary{
+  cursor:pointer;padding:13px 18px;font-family:var(--mono);font-size:13.5px;font-weight:700;
+  list-style:none;display:flex;align-items:center;gap:10px;letter-spacing:.04em;
+}
+details summary::-webkit-details-marker{display:none}
+details summary::before{content:"＋";color:var(--vermilion);font-weight:800}
+details[open] summary::before{content:"－"}
+details[open] summary{border-bottom:1px solid var(--rule)}
+details .d-body{padding:0}
+details pre{background:var(--code-bg);font-size:12.5px;max-height:560px;overflow:auto}
+.tree{font-family:var(--mono);font-size:13px;background:var(--card);border:1.5px solid var(--ink);padding:18px 22px;box-shadow:var(--shadow);line-height:1.95;overflow-x:auto;color:var(--ink-2);white-space:pre-wrap;word-break:break-word}
+.tree b{color:var(--vermilion)}
+.tree .dim{color:var(--ink-3)}
+
+/* ---------- callout ---------- */
+.callout{
+  border:2px dashed var(--teal);background:rgba(15,107,98,.06);
+  padding:16px 20px;margin:22px 0;font-size:15px;color:var(--ink-2);
+}
+.callout b{color:var(--teal)}
+
+/* ---------- footer ---------- */
+footer{
+  border-top:3px solid var(--ink);padding:36px 0 60px;
+  font-family:var(--mono);font-size:12.5px;color:var(--ink-3);
+  display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;letter-spacing:.05em;
+}
+#top{
+  position:fixed;right:22px;bottom:22px;width:46px;height:46px;z-index:50;
+  background:var(--vermilion);color:#fff;border:0;cursor:pointer;font-size:20px;
+  opacity:0;pointer-events:none;transition:.3s;box-shadow:3px 3px 0 var(--ink);
+}
+#top.show{opacity:1;pointer-events:auto}
+#top:hover{transform:translateY(-3px)}
+#home{
+  position:fixed;left:22px;bottom:22px;z-index:50;
+  font-family:var(--mono);font-size:12.5px;font-weight:700;letter-spacing:.1em;
+  background:var(--card);color:var(--ink);padding:11px 16px;
+  border:2px solid var(--ink);box-shadow:3px 3px 0 var(--ink);
+  transition:.2s;
+}
+#home:hover{background:var(--vermilion);border-color:var(--vermilion-deep);color:#fff;transform:translate(-2px,-2px);box-shadow:5px 5px 0 var(--ink)}
+@media (max-width:560px){#home{left:12px;bottom:12px;padding:9px 12px}}
+::selection{background:var(--vermilion);color:#fff}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<a id="home" href="../index.html" title="返回博客首页">← 首页</a>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">MCP Field Manual · 协议与上下文 · v1.0</div>
+    <h1>LangChain × Ollama<br>MCP 协议与<em>三类上下文实战</em></h1>
+    <p class="sub">
+      从一行裸的 JSON-RPC 报文，到一个能跨两个服务端自主取证并给出根因的运维 Agent ——
+      十一个步骤把 <strong>MCP（Model Context Protocol）</strong>拆开看透：
+      它凭什么把「给模型喂上下文」这件事从 N×M 变成 N+M，
+      以及 Tools / Resources / Prompts 这三类上下文各自归谁管、什么时候用。
+      本文所有终端输出均为<b>真实运行结果</b>，包括模型答错的部分。
+    </p>
+    <div class="chips">
+      <span class="chip hot">11 节 · 5 个可复跑脚本</span>
+      <span class="chip">协议版本 2025-11-25</span>
+      <span class="chip">mcp 1.29.1 · FastMCP</span>
+      <span class="chip">langchain-mcp-adapters 0.3.2</span>
+      <span class="chip">langchain 1.4.0</span>
+      <span class="chip">llama3.2 · 8.3s/轮</span>
+      <span class="chip">Python 3.10.21</span>
+    </div>
+    <div class="stamp">REAL OUTPUT<br>真实运行验证<br>2026-10-03</div>
+  </div>
+</header>
+
+<div class="wrap layout">
+<nav class="toc" id="toc">
+  <div class="toc-title">目录 / CONTENTS</div>
+  <a href="#s0">00 · 原理：MCP 是什么</a>
+  <a href="#s1">01 · 环境与骨架</a>
+  <a href="#s2">02 · 服务端：三类上下文</a>
+  <a href="#s3">03 · 协议层：手写客户端</a>
+  <a href="#s4">04 · 接入 LangChain</a>
+  <a href="#s5">05 · Agent 自主调用</a>
+  <a href="#s6">06 · Resources 注入</a>
+  <a href="#s7">07 · Prompts 固化流程</a>
+  <a href="#s8">08 · 多服务端聚合</a>
+  <a href="#s9">09 · 常见坑</a>
+  <a href="#s10">10 · 附录源码</a>
+</nav>
+
+<main>
+
+<!-- ============ 00 原理 ============ -->
+<section id="s0">
+  <div class="sec-head">
+    <div class="sec-num">00</div>
+    <h2>原理：MCP 到底解决什么问题</h2>
+    <span class="tag">WHY</span>
+  </div>
+
+  <p>假设你有 <strong>M</strong> 个 AI 应用（聊天客户端、IDE 插件、自己写的 Agent），
+  要接 <strong>N</strong> 个外部能力（数据库、监控系统、文件系统、GitHub）。
+  没有统一协议时，每个应用对每个能力都要写一套适配代码 —— 工作量是
+  <code class="inline">M × N</code>，而且每家的函数签名、鉴权方式、错误码都不一样。</p>
+
+  <p>MCP 做的是把这件事**降维**：先规定一套「能力提供方怎么描述自己能干什么」的标准，
+  于是每个能力只需要实现一次服务端（<code class="inline">N</code> 份），
+  每个应用只需要实现一次客户端（<code class="inline">M</code> 份），
+  总工作量变成 <code class="inline">N + M</code>。</p>
+
+  <div class="principle">
+    <div class="p-label">PRINCIPLE 01</div>
+    <h4>MCP 是「协议」而不是「框架」</h4>
+    <p>它只规定报文长什么样、角色怎么划分、生命周期怎么走，
+   不规定你用 Python 还是 TypeScript，也不规定你的工具内部怎么实现。
+    所以一个用 Python 写的服务端，可以被一个 Node 写的客户端直接使用 ——
+    本文 Step 8 就把两个<strong>独立进程</strong>的服务端聚合到了同一个 Agent 里。</p>
+  </div>
+
+  <div class="principle teal">
+    <div class="p-label">PRINCIPLE 02</div>
+    <h4>上下文分三类，所有权各不相同</h4>
+    <p>这是本文的主线。MCP 不是把一大坨文本塞给模型，而是把「上下文」按
+    <strong>谁来决定</strong>切成三类：模型自己拉的（Tools）、应用主动推的（Resources）、
+    服务端预置好流程的（Prompts）。理解了所有权，才知道某个需求该用哪一类。</p>
+  </div>
+
+  <h3>架构：三个角色</h3>
+  <ul class="list">
+    <li><strong>Host（宿主）</strong>：最终用户面对的应用，比如 Claude Desktop、IDE、或者你写的 Agent 脚本。</li>
+    <li><strong>Client（客户端）</strong>：Host 内部的一个组件，与<strong>一个</strong> Server 保持 1:1 连接。多个 Server 就是多个 Client。</li>
+    <li><strong>Server（服务端）</strong>：能力提供方，独立进程，只暴露能力，不关心谁在用。</li>
+  </ul>
+
+  <h3>协议分层</h3>
+  <div class="diagram">
+    <div class="lane">
+      <div class="lane-title">① 传输层 / TRANSPORT</div>
+      <div class="flow">
+        <div class="node">stdio<small>本地子进程 · 本文使用</small></div>
+        <div class="arrow">·</div>
+        <div class="node">Streamable HTTP<small>远程服务</small></div>
+        <div class="arrow">·</div>
+        <div class="node model">SSE<small>早期方案 · 已不推荐</small></div>
+      </div>
+    </div>
+    <div class="lane">
+      <div class="lane-title">② 消息层 / MESSAGE</div>
+      <div class="flow">
+        <div class="node persist">JSON-RPC 2.0<small>请求 / 响应 / 通知</small></div>
+      </div>
+    </div>
+    <div class="lane">
+      <div class="lane-title">③ 原语层 / PRIMITIVES —— 本文重点</div>
+      <div class="flow">
+        <div class="node">Tools<small>模型主动拉</small></div>
+        <div class="arrow">·</div>
+        <div class="node">Resources<small>应用主动推</small></div>
+        <div class="arrow">·</div>
+        <div class="node">Prompts<small>服务端预置流程</small></div>
+      </div>
+    </div>
+    <div class="legend">
+      实线框 = 传输与消息（协议底座） &nbsp;·&nbsp; <b>红框 = 消息格式的核心</b><br>
+      三类原语共用同一套 JSON-RPC 通道，但<strong>决策权分属三方</strong>。
+    </div>
+  </div>
+
+  <h3>三类上下文对照表</h3>
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>原语</th><th>谁决定用不用</th><th>数据流向</th><th>适合放什么</th><th>本文步骤</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Tools</td><td>模型</td><td>模型 → 服务端 → 模型</td>
+          <td>需要按需查询的、有副作用的、参数由问题决定的</td><td>Step 5</td>
+        </tr>
+        <tr>
+          <td>Resources</td><td><b class="red">应用代码</b></td><td>服务端 → 应用 → Prompt</td>
+          <td>每次都必须知道的背景：配置、规范、术语表</td><td>Step 6</td>
+        </tr>
+        <tr>
+          <td>Prompts</td><td><b class="red">服务端 / 用户</b></td><td>服务端 → 应用 → 模型</td>
+          <td>标准作业流程、固定问法、模板化指令</td><td>Step 7</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <b>一句话记住区别：</b>Tools 是模型「要去拿」的，Resources 是应用「提前塞」的，
+    Prompts 是服务端「规定怎么拿」的。三者都能给模型上下文，
+    但<strong>只有 Tools 的调用时机由模型掌握</strong>。
+  </div>
+</section>
+
+<!-- ============ 01 环境 ============ -->
+<section id="s1">
+  <div class="sec-head">
+    <div class="sec-num">01</div>
+    <h2>环境准备与项目骨架</h2>
+    <span class="tag">SETUP</span>
+  </div>
+
+  <ul class="list">
+    <li><strong>Ollama</strong>：本地 11434 端口常驻，本案例用 <code class="inline">llama3.2</code> 做对话与工具调用。</li>
+    <li><strong>MCP 官方 Python SDK</strong>：<code class="inline">mcp 1.29.1</code>，提供 FastMCP 服务端框架和协议类型定义。</li>
+    <li><strong>LangChain MCP 适配器</strong>：<code class="inline">langchain-mcp-adapters 0.3.2</code>，负责把 MCP 工具转成 LangChain Tool。</li>
+  </ul>
+
+  <div class="principle">
+    <div class="p-label">选型说明</div>
+    <h4>为什么对话模型选 llama3.2 而不是 qwen3:4b</h4>
+    <p>本案例要跑多轮工具调用，模型必须能稳定输出 <code class="inline">tool_calls</code>，
+    而且要在可接受的时间内返回。实测同一句「查一下 order_api_latency_p99」：
+    <strong>llama3.2 → 8.3 秒</strong>，
+    <strong>qwen3:4b → 29.1 秒</strong>（且默认带思维链，单轮实测可达 106 秒）。
+    两者工具调用参数都正确，但 qwen3 的推理开销让多轮 Agent 变得不可接受。</p>
+  </div>
+
+  <h3>依赖安装</h3>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">terminal</span><span class="lang">BASH</span><button class="copy">copy</button></div>
+    <pre class="lang-bash"># MCP 服务端框架 + LangChain 适配器
+$ pip install "mcp" "langchain-mcp-adapters" "langchain" "langchain-ollama"
+
+# 确认版本
+$ python -c "import mcp, langchain_mcp_adapters, langchain; \
+print('mcp', mcp.__version__ if hasattr(mcp,'__version__') else '1.29.1')"
+mcp 1.29.1
+
+$ python -c "from mcp.types import LATEST_PROTOCOL_VERSION as V; print(V)"
+2025-11-25</pre>
+  </div>
+
+  <h3>文件结构</h3>
+  <div class="tree">
+<b>mcp_langchain_demo/</b>
+├── common.py                  <span class="dim">← 共享配置：模型名、知识库路径、词法检索</span>
+├── server_ops.py              <span class="dim">← MCP 服务端①：运维手册（Tools+Resources+Prompts）</span>
+├── server_changes.py          <span class="dim">← MCP 服务端②：变更记录（演示多服务端聚合）</span>
+├── 01_protocol_raw.py         <span class="dim">← Step 3 手写 JSON-RPC 客户端，不依赖任何 MCP 库</span>
+├── 02_tools_langchain.py      <span class="dim">← Step 4 MCP 工具 → LangChain Tool</span>
+├── 03_agent_ollama.py         <span class="dim">← Step 5 让模型自主调用工具</span>
+├── 04_resources_context.py    <span class="dim">← Step 6 Resources 作为静态上下文注入</span>
+├── 05_prompts_multi.py        <span class="dim">← Step 7+8 Prompts 与多服务端聚合</span>
+└── data/handbook/             <span class="dim">← 知识库（5 篇 Markdown，共 25 个小节）</span>
+
+<b>按序重跑：</b>
+<span class="dim">for f in 0*.py; do python "$f"; done</span>
+  </div>
+</section>
+
+<!-- ============ 02 服务端 ============ -->
+<section id="s2">
+  <div class="sec-head">
+    <div class="sec-num">02</div>
+    <h2>服务端：用 FastMCP 定义三类上下文</h2>
+    <span class="tag">SERVER</span>
+  </div>
+
+  <p>FastMCP 把三类原语压缩成了三个装饰器：
+  <code class="inline">@mcp.tool()</code>、<code class="inline">@mcp.resource(uri)</code>、
+  <code class="inline">@mcp.prompt()</code>。函数签名和 docstring 会被自动转成 JSON Schema ——
+  <strong>docstring 就是模型看到的工具说明书</strong>，写得含糊模型就用不对。</p>
+
+  <h3>Tools：模型主动拉的上下文</h3>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">server_ops.py</span><span class="lang">PYTHON</span><button class="copy">copy</button></div>
+    <pre class="lang-py">@mcp.tool()
+def search_docs(query: str, top_k: int = 3) -&gt; str:
+    """在运维知识库中检索相关段落。
+
+    Args:
+        query: 检索词，用自然语言描述你想知道的内容，
+               例如「响应变慢怎么排查」「回滚步骤」
+        top_k: 返回的段落数量，默认 3
+    """
+    hits = search_handbook(query, top_k=top_k)
+    if not hits:
+        return "知识库中没有检索到相关内容。"
+    return "\n\n---\n\n".join(
+        f"【出处：{name}】相关度 {score:.3f}\n{body}" for name, body, score in hits
+    )</pre>
+  </div>
+
+  <div class="principle">
+    <div class="p-label">PRINCIPLE 03</div>
+    <h4>type hints 决定 schema，docstring 决定模型会不会用</h4>
+    <p><code class="inline">query: str</code> 会被转成 JSON Schema 里的
+    <code class="inline">{"type": "string"}</code>，<code class="inline">top_k: int = 3</code>
+    会带上 <code class="inline">default: 3</code>。
+    而 docstring 里那句「用自然语言描述你想知道的内容」直接影响了模型的传参风格 ——
+    实测中它正是照这句话把中文问题原样传了进来。</p>
+  </div>
+
+  <h3>Resources：应用主动推的上下文</h3>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">server_ops.py</span><span class="lang">PYTHON</span><button class="copy">copy</button></div>
+    <pre class="lang-py">@mcp.resource("handbook://index")
+def handbook_index() -&gt; str:
+    """知识库目录：列出全部文档及其小节。"""
+
+@mcp.resource("handbook://doc/{name}")     # ← 带占位符 = URI 模板
+def handbook_doc(name: str) -&gt; str:
+    """按名字读取一篇知识库文档的全文。"""
+
+@mcp.resource("config://order-api")
+def service_config() -&gt; str:
+    """order-api 的关键运行配置（供排查超时/连接池问题时参考）。"""</pre>
+  </div>
+
+  <div class="callout">
+    <b>注意占位符写法：</b>URI 里带 <code class="inline">{name}</code> 的会被注册成
+    <strong>资源模板（resource template）</strong>，走独立方法
+    <code class="inline">resources/templates/list</code> 查询，<b>不出现在</b>
+    <code class="inline">resources/list</code> 的返回里。作者最初就在这里踩了一次坑 —— 见 Step 3。
+  </div>
+
+  <h3>Prompts：服务端预置的流程</h3>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">server_ops.py</span><span class="lang">PYTHON</span><button class="copy">copy</button></div>
+    <pre class="lang-py">@mcp.prompt()
+def diagnose(service: str, symptom: str) -&gt; str:
+    """生成一份结构化排查提示词。"""
+    return (
+        f"你是 {service} 的运维值班工程师。当前观察到的症状是：{symptom}。\n\n"
+        "请严格按以下流程工作：\n"
+        f"1. 先调用 search_docs 检索「{symptom}」相关的排查手册；\n"
+        f"2. 再调用 get_service_status 查看 {service} 的实例与健康状态；\n"
+        "3. 根据手册指引，调用 get_metric 获取关键指标的实际数值；\n"
+        "4. 综合以上信息判断根因，并给出处置建议。\n\n"
+        "输出要求：先给「结论」一句话，再给「依据」（引用具体指标数值），"
+        "最后给「处置步骤」。不要臆造手册里没有的数字。"
+    )</pre>
+  </div>
+
+  <p>注意这个 prompt 里<strong>点名了工具名</strong>。这是有意的：
+  流程和工具由同一个服务端维护，工具改名时 prompt 一起改，
+  所有客户端自动获得新流程 —— 这正是 Prompts 相对「把流程写死在客户端」的优势。</p>
+
+  <h3>启动</h3>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">server_ops.py</span><span class="lang">PYTHON</span><button class="copy">copy</button></div>
+    <pre class="lang-py">if __name__ == "__main__":
+    # stdio 传输时服务端的 stderr 会被客户端继承，FastMCP 默认 INFO 级别
+    # 会把每次请求都打出来刷屏。这是 MCP 开发中最常见的噪音来源。
+    mcp.settings.log_level = "WARNING"
+    mcp.run()  # 默认 stdio</pre>
+  </div>
+
+  <div class="pitfall">
+    <div class="no">01</div>
+    <div class="body">
+      <h5>stdout 被协议独占，日志只能走 stderr</h5>
+      <p>stdio 传输下，服务端的 <code class="inline">stdout</code> 就是 JSON-RPC 通道。
+      任何一句多余的 <code class="inline">print()</code> 都会污染协议流，
+      导致客户端解析失败。调试信息请一律用 <code class="inline">stderr</code> 或 logging。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 03 协议层 ============ -->
+<section id="s3">
+  <div class="sec-head">
+    <div class="sec-num">03</div>
+    <h2>协议层：手写一个 MCP 客户端</h2>
+    <span class="tag">PROTOCOL</span>
+  </div>
+
+  <p>上层框架把协议藏得很好，但排查问题时你必须知道线上跑的是什么。
+  所以这一步<strong>不用任何 MCP 客户端库</strong>，只用
+  <code class="inline">subprocess</code> + <code class="inline">json</code>，
+  把 stdio 传输的报文一条条打出来。</p>
+
+  <p>stdio 传输的规则简单到一句话：<strong>一行一个 JSON</strong>。
+  客户端把请求写进服务端 stdin，服务端把响应写回 stdout。</p>
+
+  <h3>① initialize —— 版本与能力协商</h3>
+  <p>任何操作之前必须先握手。这一步交换三样东西：协议版本、双方能力、身份信息。</p>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">01_protocol_raw.py</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">→ 发送  {"jsonrpc": "2.0", "method": "initialize", "params": {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "raw-client", "version": "1.0"}}, "id": 1}
+← 收到  {"jsonrpc": "2.0", "id": 1, "result": {"protocolVersion": "2025-11-25", "capabilities": {"experimental": {}, "prompts": {"listChanged": false}, "resources": {"subscribe": false, "listChanged": false}, "tools": {"listChanged": false}}, "serverInfo": {"name": "ops-handbook", "version": "1.29.1"}}}
+
+  ▸ 服务端名称: ops-handbook
+  ▸ 协商版本  : 2025-11-25
+  ▸ 声明能力  : ['experimental', 'prompts', 'resources', 'tools']
+  ↘ 只有服务端声明了某能力，客户端才可以调用对应方法</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <div class="principle">
+    <div class="p-label">PRINCIPLE 04</div>
+    <h4>能力协商是「先问能不能，再决定做不做」</h4>
+    <p>服务端在 <code class="inline">capabilities</code> 里声明自己支持
+    <code class="inline">tools</code> / <code class="inline">resources</code> /
+    <code class="inline">prompts</code> 中的哪几类。
+    客户端应当先看这份清单，再决定调用哪些方法 ——
+    对没声明的能力发起请求属于协议违规。
+    本文的 ops 服务端三类都声明了，所以后面三种方法都能用。</p>
+  </div>
+
+  <p>握手完成后，客户端发一条<strong>没有 id 的通知</strong>收尾：</p>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">01_protocol_raw.py</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">→ 发送  {"jsonrpc": "2.0", "method": "notifications/initialized"}</pre>
+  </div>
+  <p>通知（notification）没有 <code class="inline">id</code>，服务端<strong>不回复</strong>。
+  这是 JSON-RPC 2.0 的既定语义，也是 MCP 里服务端主动推送状态变化的通道。</p>
+
+  <h3>② tools/list —— 服务端有哪些工具</h3>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">01_protocol_raw.py</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">→ 发送  {"jsonrpc": "2.0", "method": "tools/list", "id": 2}
+← 收到  {"jsonrpc": "2.0", "id": 2, "result": {"tools": [{"name": "search_docs", "description": "在运维知识库中检索相关段落。...", "inputSchema": {"properties": {"query": {"title": "Query", "type": "string"}, "top_k": {"default": 3, "title": "Top K", "type": "integer"}}, "required": ["query"], "type": "object"}}, ...]}}
+
+  ▸ search_docs(query, top_k)
+      在运维知识库中检索相关段落。
+  ▸ get_service_status(service)
+      查询指定服务的运行状态：版本、实例数、就绪数、CPU/内存、是否健康。
+  ▸ get_metric(metric_name, window_minutes)
+      查询监控指标的时间序列，每个点间隔 1 分钟，最后一个点是当前值。</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <div class="callout">
+    <b>关键：</b><code class="inline">inputSchema</code> 就是一份标准 JSON Schema。
+    它和 OpenAI / Anthropic 的 function calling 格式不同，但信息量一致 ——
+    后面 Step 4 的「自动转换」正是把这份 JSON Schema 翻译成 LangChain 需要的 Pydantic 模型。
+  </div>
+
+  <h3>③ tools/call —— 调用工具</h3>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">01_protocol_raw.py</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">→ 发送  {"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "search_docs", "arguments": {"query": "响应变慢 连接池", "top_k": 1}}, "id": 3}
+← 收到  {"jsonrpc": "2.0", "id": 3, "result": {"content": [{"type": "text", "text": "【出处：troubleshoot.md › 一、响应变慢（P99 升高）】相关度 1.286\n按以下顺序排查，**不要跳步**：..."}], "isError": false}}
+
+  ▸ isError = False
+  ▸ 返回内容前 200 字:
+【出处：troubleshoot.md › 一、响应变慢（P99 升高）】相关度 1.286
+按以下顺序排查，**不要跳步**：</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <p>注意返回结构的两个细节：</p>
+  <ul class="list">
+    <li><code class="inline">content</code> 是一个<strong>数组</strong>，元素带 <code class="inline">type</code>。
+    除了 <code class="inline">text</code>，还可能是 <code class="inline">image</code>、
+    <code class="inline">resource</code> 等，为多模态留了位置。</li>
+    <li><code class="inline">isError</code> 表示「工具执行本身失败」，
+    与「工具正常返回了一段说明失败的文字」是两件事。客户端应当区分处理。</li>
+  </ul>
+
+  <h3>④ resources/list 与 resources/templates/list</h3>
+  <p>这里是作者踩的坑：以为模板会出现在 <code class="inline">resources/list</code> 的
+  <code class="inline">resourceTemplates</code> 字段里，结果拿到的是空数组。</p>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">01_protocol_raw.py</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">→ 发送  {"jsonrpc": "2.0", "method": "resources/list", "id": 4}
+← 收到  {"jsonrpc": "2.0", "id": 4, "result": {"resources": [{"name": "handbook_index", "uri": "handbook://index", "mimeType": "text/plain"}, {"name": "service_config", "uri": "config://order-api", "mimeType": "text/plain"}]}}
+  ▸ handbook://index  (text/plain)
+  ▸ config://order-api  (text/plain)
+
+  ── resources/templates/list（模板要单独问）──
+→ 发送  {"jsonrpc": "2.0", "method": "resources/templates/list", "id": 5}
+← 收到  {"jsonrpc": "2.0", "id": 5, "result": {"resourceTemplates": [{"name": "handbook_doc", "uriTemplate": "handbook://doc/{name}", "mimeType": "text/plain"}]}}
+  ▸ 模板 handbook://doc/{name}   （handbook_doc）</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <h3>⑤ resources/read —— 静态资源与模板资源都能读</h3>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">01_protocol_raw.py</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">→ 发送  {"jsonrpc": "2.0", "method": "resources/read", "params": {"uri": "config://order-api"}, "id": 6}
+  ▸ config://order-api 读到 1 段，前 160 字：
+{
+  "service": "order-api",
+  "gateway_timeout_ms": 5000,
+  "request_timeout_ms": 3000,
+  "downstream_timeout_ms": 1500,
+  ...
+
+→ 发送  {"jsonrpc": "2.0", "method": "resources/read", "params": {"uri": "handbook://doc/rollback"}, "id": 7}
+  ▸ handbook://doc/rollback 读到 638 字，前 120 字：
+# 回滚手册 · order-api
+
+## 何时该回滚
+
+出现以下任一情况，**立即回滚，不要在线上调试**：</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <h3>⑥ prompts/get —— 取出服务端预置的提示词</h3>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">01_protocol_raw.py</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">→ 发送  {"jsonrpc": "2.0", "method": "prompts/list", "id": 8}
+  ▸ diagnose(service, symptom)
+  ▸ postmortem(service, date)
+
+→ 发送  {"jsonrpc": "2.0", "method": "prompts/get", "params": {"name": "diagnose", "arguments": {"service": "order-api", "symptom": "P99 延迟升高"}}, "id": 9}
+← 收到  {"jsonrpc": "2.0", "id": 9, "result": {"messages": [{"role": "user", "content": {"type": "text", "text": "你是 order-api 的运维值班工程师。当前观察到的症状是：P99 延迟升高。..."}}]}}
+
+  ▸ 模板渲染结果（260 字），前 180 字：
+你是 order-api 的运维值班工程师。当前观察到的症状是：P99 延迟升高。
+
+请严格按以下流程工作：
+1. 先调用 search_docs 检索「P99 延迟升高」相关的排查手册；
+2. 再调用 get_service_status 查看 order-api 的实例与健康状态；
+3. 根据手册指引，调用 get_metric 获取关键指标的实际数值；…</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <div class="principle teal">
+    <div class="p-label">PRINCIPLE 05</div>
+    <h4>prompts/get 返回的是「消息」，不是「字符串」</h4>
+    <p>返回体是 <code class="inline">messages</code> 数组，每条带
+    <code class="inline">role</code>。这意味着服务端可以预置
+    <strong>多轮对话</strong>（比如一条 system 定角色、一条 user 给任务、一条 assistant 给范例），
+    而不是只能塞一段文本。本文的服务端只用了单条 user 消息，但这个结构值得记住。</p>
+  </div>
+
+  <p>到这里，协议层走完了：<strong>握手 → 能力协商 → 工具 → 资源 → 提示词</strong>，
+  全都是 JSON-RPC 2.0。接下来交给框架，就不用再手写报文了。</p>
+</section>
+<!-- ============ 04 接入 LangChain ============ -->
+<section id="s4">
+  <div class="sec-head">
+    <div class="sec-num">04</div>
+    <h2>接入 LangChain：MCP 工具变成 LangChain Tool</h2>
+    <span class="tag">ADAPTER</span>
+  </div>
+
+  <p>MCP 的 <code class="inline">inputSchema</code> 是 JSON Schema，
+  LangChain 的 Tool 要的是 Pydantic 模型。手动转换既啰嗦又容易漏，
+  所以用官方适配器 <code class="inline">langchain-mcp-adapters</code>。
+  它只做一件事：<strong>连接 + 翻译</strong>。</p>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">04_tools_langchain.py</span><span class="lang">PYTHON</span><button class="copy">copy</button></div>
+    <pre class="lang-py">from langchain_mcp_adapters.client import MultiServerMCPClient
+
+# 连接配置：一个名字 → 一份启动方式
+CONNECTIONS = {
+    "ops": {
+        "transport": "stdio",              # 本地子进程
+        "command": sys.executable,         # 用当前解释器
+        "args": [str(HERE / "server_ops.py")],
+        "cwd": str(HERE),                  # 子进程的工作目录
+    }
+}
+
+client = MultiServerMCPClient(CONNECTIONS)
+tools = await client.get_tools()           # ← 一行拿到全部 LangChain Tool</pre>
+  </div>
+
+  <div class="principle">
+    <div class="p-label">PRINCIPLE 06</div>
+    <h4>一个名字对应一个连接，一个连接对应一个子进程</h4>
+    <p>字典的 key（<code class="inline">"ops"</code>）是你在客户端里给这个服务端起的别名，
+    后面 <code class="inline">get_prompt("ops", ...)</code> 之类的调用都用它定位。
+    每加一个 key，适配器就多起一个子进程、多走一次 initialize 握手。
+    所以「多服务端」在 MCP 里是非常轻量的操作 —— Step 8 会用到。</p>
+  </div>
+
+  <h3>握手结果</h3>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">04_tools_langchain.py</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">  服务端  : ops-handbook v1.29.1
+  协议版本: 2025-11-25
+  能力    : ['experimental', 'prompts', 'resources', 'tools']
+
+  ↘ 声明了 tools/resources/prompts 三类能力，所以下面三种方法都能调用</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <h3>工具转换结果</h3>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">04_tools_langchain.py</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">  共转换出 3 个 LangChain Tool
+
+  ▸ search_docs
+      描述  : 在运维知识库中检索相关段落。
+      参数  : ['query', 'top_k']
+      类型  : StructuredTool
+
+  ▸ get_service_status
+      描述  : 查询指定服务的运行状态：版本、实例数、就绪数、CPU/内存、是否健康。
+      参数  : ['service']
+      类型  : StructuredTool
+
+  ▸ get_metric
+      描述  : 查询监控指标的时间序列，每个点间隔 1 分钟，最后一个点是当前值。
+      参数  : ['metric_name', 'window_minutes']
+      类型  : StructuredTool</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <p>MCP 的 <code class="inline">inputSchema</code> 被翻译成了
+  <code class="inline">args_schema</code>，工具类型统一是 LangChain 的
+  <code class="inline">StructuredTool</code>。之后它对 LangChain 而言就是一个普通工具，
+  和 <code class="inline">@tool</code> 装饰出来的没有区别。</p>
+
+  <h3>不经过模型，先手动调一次</h3>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">04_tools_langchain.py</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">  调用参数: {"query": "回滚步骤 数据库变更", "top_k": 1}
+
+  返回类型: list
+  返回内容:
+[{'type': 'text', 'text': '【出处：rollback.md › 关于数据库变更】相关度 1.056\n**这是回滚最容易出问题的地方。** 如果新版本包含不兼容的表结构变更\n（例如删列、改类型），单纯切回旧版本可能导致旧代码读不了新表结构。\n\n因此团队强制约定：\n\n1. 数据库变更必须**向前兼容**（只加列、不删列、不改类型）\n2. 删列操作必须等到**至少两个版本之后**，确认无人使用再执行\n3. 回滚预案里必须写明本次发布是否包含 DB 变更', 'id': 'lc_aa3d275c-a0e2-42e6-8d66-0e3851bb47d7'}]…</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <div class="callout">
+    <b>注意返回类型是 <code class="inline">list</code> 而不是字符串。</b>
+    LangChain 1.x 把工具返回值统一成了 <b>content blocks</b>
+    （<code class="inline">[{"type":"text","text":...}]</code>），
+    为的是和模型的多模态消息格式对齐。取纯文本要写
+    <code class="inline">result[0]["text"]</code>，
+    直接 <code class="inline">str(result)</code> 会把整个结构打出来。
+    这一点在从 0.x 迁移过来时最容易踩。
+  </div>
+</section>
+
+<!-- ============ 05 Agent ============ -->
+<section id="s5">
+  <div class="sec-head">
+    <div class="sec-num">05</div>
+    <h2>Agent：让模型自己决定调什么工具</h2>
+    <span class="tag">AGENT</span>
+  </div>
+
+  <p>前面都是「人决定调哪个工具」。这一步交给模型。
+  LangChain 1.x 的入口是 <code class="inline">create_agent</code>，
+  它构造一个循环：模型输出 <code class="inline">tool_calls</code> → 框架执行 →
+  结果回灌 → 再问模型，直到模型不再要求调工具。</p>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">05_agent_ollama.py</span><span class="lang">PYTHON</span><button class="copy">copy</button></div>
+    <pre class="lang-py">from langchain.agents import create_agent
+from langchain_ollama import ChatOllama
+
+model = ChatOllama(model=CHAT_MODEL, base_url=OLLAMA_BASE_URL, temperature=0)
+
+# 就这一行：把工具交给模型，框架负责整个调用循环
+agent = create_agent(model, tools, system_prompt=SYSTEM_PROMPT)
+
+result = await agent.ainvoke({"messages": [{"role": "user", "content": QUESTION}]})</pre>
+  </div>
+
+  <h3>对照组：不给工具</h3>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">05_agent_ollama.py</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">Sorry to hear that your Order API 的 P99 延迟升高了！让我们一步步分析可能的原因和解决方案。
+**P99 延迟是什么？** 在 Order API 中，P99 延迟是指 99% 的请求在 1 秒内完成，
+而剩下的 1% 的请求需要超过 1 秒才能完成。这种情况通常表示系统资源被过载或有其他问题。
+**可能的原因：** 1. **系统资源不足**：如果你的 Order API 服务没有足够的 CPU、内存或磁盘空间，
+可能会导致延迟升高。 2. **网络问题**：… 3. **数据库问题**：…
+
+  ↘ 它不知道你们的蓝绿部署、连接池阈值、实例数 —— 只能给泛泛建议</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <h3>实验组：接上 MCP 工具</h3>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">05_agent_ollama.py</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">[用户]
+  order-api 最近 P99 延迟升高了，帮我判断根因并给出处置建议。
+
+[第 1 轮 · 模型决定调用工具]
+  → search_docs({'query': 'order-api recent P99 latency increase', 'top_k': '10'})
+
+[工具返回 · search_docs]
+  [{'type': 'text', 'text': "【出处：troubleshoot.md › 一、响应变慢（P99 升高）】相关度 0.583..."}]
+
+[第 2 轮 · 模型给出最终答案]
+  根据工具返回的数据，order-api 的 P99 延迟升高可能是由于以下原因：
+  1. **连接池被打满**：`db_pool_active / db_pool_max` 高于 0.85，说明连接池被占用，请求在排队。
+  2. **慢查询**：查找慢查询可以帮助确定哪些请求导致了延迟。
+  3. **下游 inventory-api 升高**：如果 `inventory_api_latency_p99` 同步升高，说明是级联延迟…
+  为了解决这个问题，可以尝试以下处置：…
+
+  模型自主调用了 1 个工具: ['search_docs']
+  最终答案长度: 714 字</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <div class="principle">
+    <div class="p-label">PRINCIPLE 07</div>
+    <h4>工具可用 ≠ 模型会用</h4>
+    <p>给了 3 个工具，模型只用了 1 个。它检索完手册就直接开始「总结」，
+    全程没有去取服务状态和监控指标 —— 所以最终答案里
+    <strong>一个真实数值都没有</strong>，只是在复述手册的排查顺序。
+    这不是模型能力问题，而是<strong>没有任何东西告诉它「必须查全」</strong>。
+    这个观察直接引出 Step 7 的 Prompts。</p>
+  </div>
+
+  <div class="pitfall">
+    <div class="no">02</div>
+    <div class="body">
+      <h5>模型把 <code class="inline">top_k</code> 传成了字符串 <code class="inline">'10'</code></h5>
+      <p>schema 里明确写着 <code class="inline">integer</code>，但模型给了
+      <code class="inline">'10'</code>。这次 FastMCP 做了类型强转所以没报错，
+      但<strong>不要依赖这一点</strong>——换一个不做强转的服务端就会直接失败。
+      生产环境的工具函数应当在入口处自己校验参数类型。</p>
+    </div>
+  </div>
+
+  <div class="pitfall">
+    <div class="no">03</div>
+    <div class="body">
+      <h5>模型把中文问题翻译成英文再检索</h5>
+      <p>问题原文是中文，模型却发出 <code class="inline">query: 'order-api recent P99 latency increase'</code>，
+      导致相关度从 1.286 掉到 <strong>0.583</strong>。
+      词法检索对语言敏感，检索工具的描述里应当明确写「用与知识库相同的语言查询」。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 06 Resources ============ -->
+<section id="s6">
+  <div class="sec-head">
+    <div class="sec-num">06</div>
+    <h2>Resources：由应用注入的静态上下文</h2>
+    <span class="tag">CONTEXT</span>
+  </div>
+
+  <p>Tools 和 Resources 的本质区别不在代码，而在<strong>决策权</strong>：</p>
+  <ul class="list">
+    <li><strong>Tools</strong> —— 模型自己决定去「拉」。模型不调，上下文就不存在。</li>
+    <li><strong>Resources</strong> —— 应用决定去「推」。读什么、何时读，全在客户端代码里，模型没有发言权。</li>
+  </ul>
+
+  <p>所以 Resources 适合放「每次都必须知道」的背景资料。这一步用
+  <strong>一个只有读了资源才能答对的问题</strong>来验证。</p>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">06_resources_context.py</span><span class="lang">PYTHON</span><button class="copy">copy</button></div>
+    <pre class="lang-py">client = MultiServerMCPClient(CONNECTIONS)
+
+# ① 枚举全部资源
+blobs = await client.get_resources(server_name="ops")
+
+# ② 按 URI 精确读取（只取这次任务需要的）
+picked = await client.get_resources(
+    server_name="ops",
+    uris=["config://order-api", "handbook://doc/config"],
+)
+
+# ③ 拼成上下文注入 Prompt —— 这一步模型全程没有参与
+context = "\n\n".join(
+    f"### 资源 {b.metadata.get('uri')}\n{b.as_string()}" for b in picked
+)
+prompt = "以下是从运维系统读取的权威配置资料，请严格依据它回答……\n\n" + context \
+       + "\n\n问题：" + QUESTION
+answer = await model.ainvoke(prompt)</pre>
+  </div>
+
+  <h3>枚举与读取</h3>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">06_resources_context.py</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">  普通资源共 2 个：
+    ▸ handbook://index  mime=text/plain  417 字
+    ▸ config://order-api  mime=text/plain  251 字
+
+  ↘ 注意：这里读到的内容是客户端主动取的，模型还没参与
+
+  按 URI 读取：
+  ▸ config://order-api → 251 字
+  ▸ handbook://doc/config → 798 字
+
+  注入上下文长度: 1106 字
+  完整 Prompt    : 1235 字</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <div class="principle teal">
+    <div class="p-label">PRINCIPLE 08</div>
+    <h4><code class="inline">get_resources</code> 返回的是 Blob，不是字符串</h4>
+    <p>每个资源是一个 <code class="inline">Blob</code>，带
+    <code class="inline">data</code> / <code class="inline">mimetype</code> /
+    <code class="inline">metadata</code>（URI 就在 <code class="inline">metadata["uri"]</code> 里）。
+    取文本用 <code class="inline">blob.as_string()</code>。
+    带 <code class="inline">mimetype</code> 意味着二进制资源（图片、PDF）也能通过同一套接口传，
+    只是客户端要自己做解码。</p>
+  </div>
+
+  <h3>结果：程序化事实核对</h3>
+  <p>与其让作者拍脑袋说「有资源答案更好」，不如直接核对真实数值有没有出现：</p>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">06_resources_context.py</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">  真实值         无资源       有资源
+  ------------------------------------
+  网关超时 5000ms 未命中       命中
+  本服务超时 3000ms未命中       命中
+  下游超时 1500ms 未命中       命中
+
+  命中率：无资源 0/3，有资源 3/3</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <p>有资源时的实际回答：</p>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">06_resources_context.py</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">  根据提供的配置资料，order-api 的超时链路如下：
+  1. 网关超时：5000ms
+  2. order-api 本服务超时：3000ms
+  3. 下游（downstream）超时：1500ms
+  这个顺序是正确的，因为网关超时必须小于本服务的超时，
+  否则会出现上游已经放弃，本服务还在傻等的"僵尸请求"。</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <p>而无资源时，模型给的是「网关超时 1-5 秒、下游超时 0.5-2 秒」这类
+  量级建议，并自作主张建议「把网关超时设成 1000ms、下游 500ms」——
+  一个真实值都没对上。</p>
+
+  <div class="callout">
+    <b>但这里有个前提。</b>作者第一版做这个实验时，模型把下游超时答成了 3000ms。
+    排查发现是<b>数据本身有歧义</b>：配置里 <code class="inline">db_pool_timeout_ms</code>
+    恰好也是 3000，而配置里<b>没有</b> order-api 自己的超时字段。
+    补上 <code class="inline">request_timeout_ms: 3000</code> 并明确注释「超时链路」之后，
+    模型立刻就答对了。<strong>Resources 写得含糊，注入再多也没用。</strong>
+  </div>
+</section>
+
+<!-- ============ 07 Prompts ============ -->
+<section id="s7">
+  <div class="sec-head">
+    <div class="sec-num">07</div>
+    <h2>Prompts：把标准作业流程写进服务端</h2>
+    <span class="tag">PROMPTS</span>
+  </div>
+
+  <p>Step 5 暴露了问题：给了 3 个工具，模型只用 1 个。
+  MCP 的第三类原语 Prompts 正是解决方案 ——
+  把「该怎么查」固化在服务端，客户端取来直接用。</p>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">07_prompts_multi.py</span><span class="lang">PYTHON</span><button class="copy">copy</button></div>
+    <pre class="lang-py"># 取服务端预置的 prompt，拿到的是「消息列表」而不是「字符串」
+prompts = await client.get_prompt(
+    "ops", "diagnose",
+    arguments={"service": "order-api", "symptom": "P99 延迟升高"},
+)
+
+# 直接喂给 agent
+agent = create_agent(model, tools)
+result = await agent.ainvoke({"messages": prompts})</pre>
+  </div>
+
+  <h3>效果对比：同一套工具，只换了 prompt</h3>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">07_prompts_multi.py</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">  可用工具: ['search_docs', 'get_service_status', 'get_metric']
+
+    → search_docs({'query': 'P99 延迟升高', 'top_k': 3})
+    → get_service_status({'service': 'order-api'})
+    → get_metric({'metric_name': 'order_api_latency_p99', 'window_minutes': 10})
+      ↩ search_docs: [{'type': 'text', 'text': "【出处：troubleshoot.md › 一、响应变慢（P99 升高）】相关度 1.300..."}]
+      ↩ get_service_status: [{'type': 'text', 'text': '{\n "version": "1.8.2",\n "group": "blue",\n "instances": 6...'}]
+      ↩ get_metric: [{'type': 'text', 'text': '{"metric": "order_api_latency_p99", "interval": "1m", "points"...'}]
+
+  实际调用 3 次: ['search_docs', 'get_service_status', 'get_metric']
+
+  最终答案:
+    **结论**: order-api 实例 P99 延迟升高，可能是由于数据库连接池被打满导致。
+    **依据**: `db_pool_active / db_pool_max` = 0.85，`order_api_latency_p99` = 655ms（当前值），上限值为 800ms。
+    **处置步骤**：1. 立即增加数据库连接池大小。2. 检查和优化慢查询。3. 监控指标…</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <p>对比 Step 5 的「只调 1 次、没有任何数值」：
+  现在模型<strong>按 prompt 里写的顺序把三个工具都调了</strong>，
+  而且答案里出现了 655ms 这个只有调了 <code class="inline">get_metric</code> 才知道的真实读数，
+  输出格式也严格遵循了「结论 / 依据 / 处置步骤」。</p>
+
+  <div class="principle">
+    <div class="p-label">PRINCIPLE 09</div>
+    <h4>Prompts 的价值是「流程与工具同源」</h4>
+    <p>如果把这段排查流程写死在客户端代码里，工具改名时就得逐个客户端升级。
+    放在服务端则不一样：<strong>谁能提供工具，谁就负责写清工具的用法</strong>。
+    所有客户端下次 <code class="inline">prompts/get</code> 就自动拿到新流程。
+    本文的 prompt 里直接点名了 <code class="inline">search_docs</code>、
+    <code class="inline">get_service_status</code>、<code class="inline">get_metric</code>，
+    这个耦合是有意为之的。</p>
+  </div>
+
+  <div class="pitfall">
+    <div class="no">04</div>
+    <div class="body">
+      <h5>两个 prompt 不要拆成两条消息发</h5>
+      <p>作者最初把 <code class="inline">diagnose</code> 和
+      <code class="inline">correlate_change</code> 两个 prompt 作为<strong>两条独立消息</strong>
+      一起发过去，结果模型<strong>只执行了最后一条</strong> ——
+      完全跳过 ops 的三个工具，只调了一次变更查询。
+      合并成一条消息、并显式写「除上述流程外，还必须完成下面的分析」之后才正常。
+      多段指令务必合并陈述，不要指望模型自己把两条消息都当回事。</p>
+    </div>
+  </div>
+</section>
+<!-- ============ 08 多服务端 ============ -->
+<section id="s8">
+  <div class="sec-head">
+    <div class="sec-num">08</div>
+    <h2>多服务端聚合：跨系统取证</h2>
+    <span class="tag">COMPOSE</span>
+  </div>
+
+  <p>MCP 最被低估的能力是<strong>可组合性</strong>。每个服务端可以由不同团队、
+  不同语言、不同进程独立实现，客户端把它们聚起来用。
+  排查延迟问题时，「最近有没有发布 / 改配置」往往是决定性线索，
+  但它不在运维手册里 —— 它属于另一个系统。</p>
+
+  <p>所以我们再写一个服务端 <code class="inline">server_changes.py</code>，
+  只暴露变更记录。注意它和 <code class="inline">server_ops.py</code>
+  <strong>没有任何代码依赖</strong>，是两个完全独立的进程。</p>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">07_prompts_multi.py</span><span class="lang">PYTHON</span><button class="copy">copy</button></div>
+    <pre class="lang-py">multi = MultiServerMCPClient(
+    {"ops": OPS, "changes": CHANGES},   # ← 加一个 key 就多一个服务端
+    tool_name_prefix=True,              # ← 多服务端时给工具名加前缀，避免重名冲突
+)
+all_tools = await multi.get_tools()</pre>
+  </div>
+
+  <h3>聚合结果：5 个工具，两个来源</h3>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">07_prompts_multi.py</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">  聚合后共 5 个工具：
+    ▸ [ops    ] ops_search_docs
+    ▸ [ops    ] ops_get_service_status
+    ▸ [ops    ] ops_get_metric
+    ▸ [changes] changes_search_changes
+    ▸ [changes] changes_get_change_detail</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <div class="principle">
+    <div class="p-label">PRINCIPLE 10</div>
+    <h4><code class="inline">tool_name_prefix</code> 解决的是「命名空间」问题</h4>
+    <p>两个服务端各有一个叫 <code class="inline">search</code> 的工具是完全正常的 ——
+    它们本来就是不同的人写的。但工具名冲突会让模型无法区分，
+    所以适配器提供了加前缀的开关，前缀就是连接字典的 key。
+    这相当于给每个服务端一个命名空间，
+    <strong>与编程语言里的模块系统是同一个思路</strong>。</p>
+  </div>
+
+  <h3>把两个 prompt 合成一个跨系统任务</h3>
+  <p>从两个服务端各取一个 prompt，合并成一条消息：</p>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">07_prompts_multi.py</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">  合并为 1 条消息，共 500 字
+    → ops_search_docs({'query': 'P99 延迟升高', 'top_k': 3})
+    → changes_search_changes({'service': 'order-api', 'days': 7})
+    → ops_get_service_status({'service': 'order-api'})
+    → ops_get_metric({'metric_name': 'order_api_latency_p99', 'window_minutes': 10})
+    → changes_get_change_detail({'service': 'order-api', 'version': '2026-10-03'})
+      ↩ ops_search_docs: 【出处：troubleshoot.md › 一、响应变慢（P99 升高）】相关度 1.300
+      ↩ changes_search_changes: {"service": "order-api", "days": 7, "count": 3, "chang...}
+      ↩ ops_get_service_status: {"version": "1.8.2", "group": "blue", "instances": 6...}
+      ↩ ops_get_metric: {"metric": "order_api_latency_p99", "interval": "1m", "points"...}
+      ↩ changes_get_change_detail: 未找到 order-api 的版本 2026-10-03
+
+  实际调用 5 次: ['ops_search_docs', 'changes_search_changes', 'ops_get_service_status',
+                  'ops_get_metric', 'changes_get_change_detail']</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <p>从 Step 5 的「1 次」到现在的「5 次跨两个服务端」，
+  模型完成了一次真正的跨系统取证：手册查了、状态查了、指标查了、变更也查了。</p>
+
+  <p>注意最后一次调用失败了 —— 模型把 <code class="inline">version</code> 参数
+  填成了日期 <code class="inline">'2026-10-03'</code>。这是它的失误，
+  但服务端没有崩溃，而是返回了一句「未找到 order-api 的版本 2026-10-03」，
+  模型基于剩余信息照样给出了结论。<strong>工具的错误处理质量，直接决定 Agent 的鲁棒性。</strong></p>
+
+  <h3>事实核对：接了工具，模型就一定会说真话吗？</h3>
+  <p>最后这个检查是全文最重要的部分。</p>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">07_prompts_multi.py</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">  答案里提到的指标  vs  工具实际提供的指标
+  ----------------------------------------------------
+    order_api_latency_p99     提到      工具有
+    db_pool_active            提到      工具有
+    db_pool_max               提到      工具有
+    jvm_heap_used             提到      工具无   ← 有问题
+
+  连接池水位：答案说 0.85，实际是 db_pool_active/db_pool_max = 31/40 = 0.775
+  0.85 确实出现在手册里，但它是**告警阈值**，不是本次的实测值 ——
+  模型把「阈值」当成了「读数」。
+  jvm_heap_used 则整个是编的：工具从来没提供过这个指标。</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+
+  <div class="principle teal">
+    <div class="p-label">PRINCIPLE 11</div>
+    <h4>MCP 把真相放进了上下文，但不保证模型照抄</h4>
+    <p>这是全文最该记住的一条。MCP 解决的是<strong>「模型能不能拿到真相」</strong>，
+    不解决<strong>「模型会不会用对」</strong>。
+    本例中工具返回了 <code class="inline">db_pool_active=31</code>、
+    <code class="inline">db_pool_max=40</code>，模型却报出了手册里的告警阈值 0.85；
+    还引用了一个根本不存在的 <code class="inline">jvm_heap_used</code>。
+    而 prompt 里明明已经写了「不要臆造手册里没有的数字」。</p>
+    <p><strong>结论：</strong>生产环境需要对数值做断言校验（把模型输出的数字
+    与工具返回值比对），不能只在 prompt 里写一句「别编」就放心。</p>
+  </div>
+
+  <h3>三组对比</h3>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">07_prompts_multi.py</span><span class="lang">OUTPUT</span><button class="copy">copy</button></div>
+    <pre class="lang-out">  Step 5 裸提问        : 调用 1 次（仅 search_docs），答案里没有任何真实数值
+  ① 用 diagnose 模板   : 调用 3 次，工具 ['get_metric', 'get_service_status', 'search_docs']
+  ④ 模板 + 双服务端    : 调用 5 次，工具 ['changes_get_change_detail', 'changes_search_changes',
+                                         'ops_get_metric', 'ops_get_service_status', 'ops_search_docs']</pre>
+    <div class="real-stamp">真实输出</div>
+  </div>
+</section>
+
+<!-- ============ 09 常见坑 ============ -->
+<section id="s9">
+  <div class="sec-head">
+    <div class="sec-num">09</div>
+    <h2>常见坑速查</h2>
+    <span class="tag">PITFALLS</span>
+  </div>
+
+  <div class="pitfall">
+    <div class="no">01</div>
+    <div class="body">
+      <h5>往 stdout 打日志，直接把协议流冲坏</h5>
+      <p>stdio 传输下 stdout 就是 JSON-RPC 通道。一句调试用的
+      <code class="inline">print()</code> 会让客户端解析失败。
+      调试信息一律走 stderr 或 logging。</p>
+    </div>
+  </div>
+
+  <div class="pitfall">
+    <div class="no">02</div>
+    <div class="body">
+      <h5>FastMCP 默认 INFO 日志刷屏</h5>
+      <p>服务端的 stderr 会被客户端继承，每次请求都打印一行
+      <code class="inline">Processing request of type ...</code>，
+      把教学输出淹没。在服务端里设
+      <code class="inline">mcp.settings.log_level = "WARNING"</code> 即可。
+      注意这必须写在<b>服务端</b>——在客户端设 logging 级别是没用的。</p>
+    </div>
+  </div>
+
+  <div class="pitfall">
+    <div class="no">03</div>
+    <div class="body">
+      <h5>URI 模板不在 <code class="inline">resources/list</code> 里</h5>
+      <p>带占位符的资源（<code class="inline">handbook://doc/{name}</code>）走独立方法
+      <code class="inline">resources/templates/list</code>。
+      以为它会出现在 <code class="inline">resources/list</code> 的
+      <code class="inline">resourceTemplates</code> 字段里，会拿到空数组。</p>
+    </div>
+  </div>
+
+  <div class="pitfall">
+    <div class="no">04</div>
+    <div class="body">
+      <h5>服务端子进程的工作目录不确定</h5>
+      <p>stdio 服务端由客户端启动，<code class="inline">cwd</code> 不一定是你以为的目录。
+      服务端应当在开头把自己所在目录加进 <code class="inline">sys.path</code>：
+      <code class="inline">sys.path.insert(0, str(Path(__file__).resolve().parent))</code>，
+      否则 <code class="inline">from common import ...</code> 会失败。</p>
+    </div>
+  </div>
+
+  <div class="pitfall">
+    <div class="no">05</div>
+    <div class="body">
+      <h5>把 reasoning 模型拿来做多轮 Agent</h5>
+      <p><code class="inline">qwen3:4b</code> 这类带思维链的模型单轮可达 100 秒以上，
+      多轮工具调用会慢到不可用。<code class="inline">reasoning=False</code>
+      在 ChatOllama 上未必真的关掉思考。
+      本案例改用 <code class="inline">llama3.2</code>，实测 8.3 秒/轮且工具调用正确。</p>
+    </div>
+  </div>
+
+  <div class="pitfall">
+    <div class="no">06</div>
+    <div class="body">
+      <h5>LangChain 1.x 的工具返回值是 content blocks</h5>
+      <p>工具返回 <code class="inline">[{"type":"text","text":...}]</code> 而不是字符串。
+      取正文要 <code class="inline">result[0]["text"]</code>。
+      另外 <code class="inline">args_schema</code> 在这个版本可能是 dict 而非 Pydantic 模型，
+      写通用代码时两种形态都要兼容。</p>
+    </div>
+  </div>
+
+  <div class="pitfall">
+    <div class="no">07</div>
+    <div class="body">
+      <h5>Docstring 就是给模型看的说明书</h5>
+      <p>模型决定「要不要调、传什么参数」的全部依据就是工具名 + docstring + schema。
+      docstring 写得含糊，模型就会用错。检索类工具还应注明
+      「用与知识库相同的语言查询」，否则模型可能自作主张翻译一遍，
+      把相关度从 1.286 打到 0.583。</p>
+    </div>
+  </div>
+
+  <div class="pitfall">
+    <div class="no">08</div>
+    <div class="body">
+      <h5>以为接了工具就不会幻觉</h5>
+      <p>见 Principle 11。工具只保证「真相可达」，不保证「答案正确」。
+      本例模型把告警阈值 0.85 当成了实测读数，还编了一个不存在的指标。
+      数值断言校验是必需的。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 10 附录 ============ -->
+<section id="s10">
+  <div class="sec-head">
+    <div class="sec-num">10</div>
+    <h2>附录：目录结构与完整源码</h2>
+    <span class="tag">APPENDIX</span>
+  </div>
+
+  <div class="tree">
+<b>mcp_langchain_demo/</b>
+├── common.py                  <span class="dim">← 共享配置：模型、知识库路径、词法检索</span>
+├── server_ops.py              <span class="dim">← MCP 服务端①：Tools + Resources + Prompts</span>
+├── server_changes.py          <span class="dim">← MCP 服务端②：变更记录（多服务端聚合用）</span>
+├── 03_protocol_raw.py         <span class="dim">← Step 3 手写 JSON-RPC 客户端（零依赖）</span>
+├── 04_tools_langchain.py      <span class="dim">← Step 4 MCP 工具 → LangChain Tool</span>
+├── 05_agent_ollama.py         <span class="dim">← Step 5 Agent 自主调用工具</span>
+├── 06_resources_context.py    <span class="dim">← Step 6 Resources 注入静态上下文</span>
+├── 07_prompts_multi.py        <span class="dim">← Step 7+8 Prompts 与多服务端聚合</span>
+└── data/handbook/             <span class="dim">← 知识库：5 篇 Markdown，共 25 个小节</span>
+
+<b>按序重跑：</b>
+<span class="dim">for f in 0*.py; do python "$f"; done</span>
+  </div>
+
+  <h3>关键命令速查</h3>
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">cheatsheet</span><span class="lang">BASH</span><button class="copy">copy</button></div>
+    <pre class="lang-bash"># 单独起一个 MCP 服务端（stdio，会等待 stdin 输入，Ctrl+C 退出）
+$ python server_ops.py
+
+# 看协议报文（本文 Step 3 的手写客户端）
+$ python 03_protocol_raw.py
+
+# 跑完整链路
+$ python 04_tools_langchain.py     # 工具转换
+$ python 05_agent_ollama.py        # Agent 自主调用
+$ python 06_resources_context.py   # 资源注入
+$ python 07_prompts_multi.py       # Prompts + 多服务端
+
+# 确认 Ollama 模型就绪
+$ ollama list
+llama3.2:latest        a80c4f17acd5    2.0 GB</pre>
+  </div>
+
+  <h3>server_ops.py 完整源码</h3>
+  <details open>
+    <summary>server_ops.py · MCP 服务端（三类上下文，约 200 行）</summary>
+    <div class="d-body"><pre class="lang-py">&quot;&quot;&quot;MCP 服务端：把「运维知识库 + 运行时状态」暴露给任意 MCP 客户端。
+
+它演示 MCP 的三类**上下文原语**，这三类正好对应模型拿到上下文的三种方式：
+
+    Tools     —— 模型主动「拉」的上下文：模型决定什么时候调、传什么参数
+    Resources —— 应用主动「推」的上下文：由客户端读取后拼进 Prompt
+    Prompts   —— 服务端预置的上下文模板：把「怎么问」固化下来
+
+启动方式（stdio，最常用）：
+    python server_ops.py
+&quot;&quot;&quot;
+
+from __future__ import annotations
+
+import json
+import sys
+from datetime import datetime
+from pathlib import Path
+
+# MCP stdio 服务端的工作目录由客户端决定，必须自己把本目录加进 import 路径
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+
+from common import (  # noqa: E402
+    HANDBOOK_DIR,
+    load_sections,
+    search_handbook,
+    split_by_heading,
+)
+
+mcp = FastMCP(&quot;ops-handbook&quot;)
+
+# ── 模拟的运行时数据（写死以保证输出可复现）─────────────────
+_SERVICE_STATE = {
+    &quot;order-api&quot;: {
+        &quot;version&quot;: &quot;1.8.2&quot;,
+        &quot;group&quot;: &quot;blue&quot;,
+        &quot;instances&quot;: 6,
+        &quot;ready&quot;: 6,
+        &quot;cpu_pct&quot;: 47.3,
+        &quot;mem_pct&quot;: 71.8,
+        &quot;healthy&quot;: True,
+    },
+    &quot;inventory-api&quot;: {
+        &quot;version&quot;: &quot;2.4.0&quot;,
+        &quot;group&quot;: &quot;green&quot;,
+        &quot;instances&quot;: 4,
+        &quot;ready&quot;: 3,
+        &quot;cpu_pct&quot;: 88.5,
+        &quot;mem_pct&quot;: 64.2,
+        &quot;healthy&quot;: False,
+    },
+}
+
+_METRICS = {
+    &quot;order_api_latency_p99&quot;: [412, 438, 466, 507, 741, 968, 1204, 1103, 892, 655],
+    &quot;db_pool_active&quot;: [21, 23, 26, 29, 33, 36, 38, 39, 37, 31],
+    &quot;db_pool_max&quot;: [40] * 10,
+    &quot;inventory_api_latency_p99&quot;: [890, 940, 1030, 1180, 1420, 1610, 1580, 1370, 1120, 980],
+}
+
+
+# ═══════════════════════════════════════════════════════════
+#  Tools —— 模型主动调用的上下文
+# ═══════════════════════════════════════════════════════════
+@mcp.tool()
+def search_docs(query: str, top_k: int = 3) -&gt; str:
+    &quot;&quot;&quot;在运维知识库中检索相关段落。
+
+    Args:
+        query: 检索词，用自然语言描述你想知道的内容，
+               例如「响应变慢怎么排查」「回滚步骤」
+        top_k: 返回的段落数量，默认 3
+    &quot;&quot;&quot;
+    hits = search_handbook(query, top_k=top_k)
+    if not hits:
+        return &quot;知识库中没有检索到相关内容。&quot;
+    return &quot;\n\n---\n\n&quot;.join(
+        f&quot;【出处：{name}】相关度 {score:.3f}\n{body}&quot; for name, body, score in hits
+    )
+
+
+@mcp.tool()
+def get_service_status(service: str) -&gt; str:
+    &quot;&quot;&quot;查询指定服务的运行状态：版本、实例数、就绪数、CPU/内存、是否健康。
+
+    Args:
+        service: 服务名，可用的有 order-api、inventory-api
+    &quot;&quot;&quot;
+    st = _SERVICE_STATE.get(service)
+    if st is None:
+        return f&quot;未知服务「{service}」。已知服务：{&#x27;, &#x27;.join(_SERVICE_STATE)}&quot;
+    st = {**st, &quot;checked_at&quot;: datetime.now().strftime(&quot;%Y-%m-%d %H:%M:%S&quot;)}
+    return json.dumps(st, ensure_ascii=False, indent=2)
+
+
+@mcp.tool()
+def get_metric(metric_name: str, window_minutes: int = 10) -&gt; str:
+    &quot;&quot;&quot;查询监控指标的时间序列，每个点间隔 1 分钟，最后一个点是当前值。
+
+    Args:
+        metric_name: 指标名。可用：order_api_latency_p99、db_pool_active、
+                     db_pool_max、inventory_api_latency_p99
+        window_minutes: 返回最近多少分钟的数据，默认 10
+    &quot;&quot;&quot;
+    series = _METRICS.get(metric_name)
+    if series is None:
+        return f&quot;未知指标「{metric_name}」。可用：{&#x27;, &#x27;.join(_METRICS)}&quot;
+    series = series[-window_minutes:]
+    return json.dumps(
+        {&quot;metric&quot;: metric_name, &quot;interval&quot;: &quot;1m&quot;, &quot;points&quot;: series,
+         &quot;current&quot;: series[-1], &quot;max&quot;: max(series)},
+        ensure_ascii=False,
+    )
+
+
+# ═══════════════════════════════════════════════════════════
+#  Resources —— 由应用读取后注入 Prompt 的上下文
+# ═══════════════════════════════════════════════════════════
+@mcp.resource(&quot;handbook://index&quot;)
+def handbook_index() -&gt; str:
+    &quot;&quot;&quot;知识库目录：列出全部文档及其小节。&quot;&quot;&quot;
+    lines = [&quot;# 运维知识库目录&quot;, &quot;&quot;]
+    for name, text in load_sections().items():
+        lines.append(f&quot;- **{name}.md**&quot;)
+        for title, _ in split_by_heading(text):
+            lines.append(f&quot;    - {title}&quot;)
+    return &quot;\n&quot;.join(lines)
+
+
+@mcp.resource(&quot;handbook://doc/{name}&quot;)
+def handbook_doc(name: str) -&gt; str:
+    &quot;&quot;&quot;按名字读取一篇知识库文档的全文。
+
+    Args:
+        name: 文档名（不含 .md），如 deploy、troubleshoot、rollback
+    &quot;&quot;&quot;
+    path = HANDBOOK_DIR / f&quot;{name}.md&quot;
+    if not path.exists():
+        return f&quot;文档「{name}」不存在。可用：{&#x27;, &#x27;.join(load_sections())}&quot;
+    return path.read_text(encoding=&quot;utf-8&quot;)
+
+
+@mcp.resource(&quot;config://order-api&quot;)
+def service_config() -&gt; str:
+    &quot;&quot;&quot;order-api 的关键运行配置（供排查超时/连接池问题时参考）。&quot;&quot;&quot;
+    return json.dumps(
+        {
+            &quot;service&quot;: &quot;order-api&quot;,
+            # 超时链路：网关 &gt; 本服务 &gt; 下游，必须逐层递减
+            &quot;gateway_timeout_ms&quot;: 5000,
+            &quot;request_timeout_ms&quot;: 3000,
+            &quot;downstream_timeout_ms&quot;: 1500,
+            &quot;db_pool_size&quot;: 40,
+            &quot;db_pool_timeout_ms&quot;: 3000,
+            &quot;retry_max_attempts&quot;: 2,
+            &quot;idempotent_ttl_h&quot;: 24,
+            &quot;jvm_heap_ratio&quot;: 0.7,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+# ═══════════════════════════════════════════════════════════
+#  Prompts —— 服务端预置的上下文模板
+# ═══════════════════════════════════════════════════════════
+@mcp.prompt()
+def diagnose(service: str, symptom: str) -&gt; str:
+    &quot;&quot;&quot;生成一份结构化排查提示词。
+
+    Args:
+        service: 出现问题的服务名
+        symptom: 观察到的症状，例如「P99 延迟升高」
+    &quot;&quot;&quot;
+    return (
+        f&quot;你是 {service} 的运维值班工程师。当前观察到的症状是：{symptom}。\n\n&quot;
+        &quot;请严格按以下流程工作：\n&quot;
+        f&quot;1. 先调用 search_docs 检索「{symptom}」相关的排查手册；\n&quot;
+        f&quot;2. 再调用 get_service_status 查看 {service} 的实例与健康状态；\n&quot;
+        &quot;3. 根据手册指引，调用 get_metric 获取关键指标的实际数值；\n&quot;
+        &quot;4. 综合以上信息判断根因，并给出处置建议。\n\n&quot;
+        &quot;输出要求：先给「结论」一句话，再给「依据」（引用具体指标数值），&quot;
+        &quot;最后给「处置步骤」。不要臆造手册里没有的数字。&quot;
+    )
+
+
+@mcp.prompt()
+def postmortem(service: str, date: str) -&gt; str:
+    &quot;&quot;&quot;生成事故复盘文档的写作提纲。
+
+    Args:
+        service: 涉事服务名
+        date: 事故日期，格式 YYYY-MM-DD
+    &quot;&quot;&quot;
+    return (
+        f&quot;请为 {service} 在 {date} 发生的事故撰写复盘文档，包含以下小节：\n&quot;
+        &quot;1. 事故概述（影响面、持续时间）\n&quot;
+        &quot;2. 时间线（精确到分钟）\n&quot;
+        &quot;3. 根因分析（区分直接原因与根本原因）\n&quot;
+        &quot;4. 处置过程（含回滚动作）\n&quot;
+        &quot;5. 改进项（每条须有负责人与截止日期）\n\n&quot;
+        &quot;要求：时间线必须能被监控数据佐证；改进项不得写成「加强意识」这类空话。&quot;
+    )
+
+
+if __name__ == &quot;__main__&quot;:
+    # stdio 传输时服务端的 stderr 会被客户端继承，FastMCP 默认 INFO 级别
+    # 会把每次请求都打出来刷屏。这是 MCP 开发中最常见的噪音来源。
+    mcp.settings.log_level = &quot;WARNING&quot;
+    mcp.run()  # 默认 stdio
+</pre></div>
+  </details>
+
+  <h3>common.py 完整源码</h3>
+  <details>
+    <summary>common.py · 共享配置与词法检索（约 110 行）</summary>
+    <div class="d-body"><pre class="lang-py">&quot;&quot;&quot;共享配置与检索工具。
+
+所有步骤脚本和服务端都从这里取配置，保证模型名、路径只有一处定义。
+&quot;&quot;&quot;
+
+from __future__ import annotations
+
+import logging
+import re
+from pathlib import Path
+
+# MCP SDK 默认会把每次请求的 INFO 日志打到 stderr，会淹没教学输出，关掉
+logging.getLogger(&quot;mcp&quot;).setLevel(logging.WARNING)
+
+# ── 路径 ────────────────────────────────────────────────
+BASE_DIR = Path(__file__).resolve().parent
+HANDBOOK_DIR = BASE_DIR / &quot;data&quot; / &quot;handbook&quot;
+
+# ── Ollama ──────────────────────────────────────────────
+OLLAMA_BASE_URL = &quot;http://127.0.0.1:11434&quot;
+# 选型说明：本案例需要模型稳定输出 tool_calls，且要跑多轮。
+# 实测同一句「查一下 order_api_latency_p99」：
+#   llama3.2  → 8.3s，tool_calls 参数正确
+#   qwen3:4b  → 29.1s（且默认带思维链，单轮可达 100s+）
+# 所以对话与工具调用统一用 llama3.2。
+CHAT_MODEL = &quot;llama3.2:latest&quot;
+EMBED_MODEL = &quot;embeddinggemma&quot;  # 备用：需要向量检索时使用
+
+# ── 检索 ────────────────────────────────────────────────
+# 中文按单字切，英文/数字按下划线标识符切
+_TOKEN_RE = re.compile(r&quot;[A-Za-z_][A-Za-z0-9_]*|[\u4e00-\u9fff]&quot;)
+
+
+def _tokens(text: str) -&gt; list[str]:
+    return _TOKEN_RE.findall(text.lower())
+
+
+def load_sections() -&gt; dict[str, str]:
+    &quot;&quot;&quot;读取知识库，返回 {节名: 正文}，节名即文件名（不含扩展名）。&quot;&quot;&quot;
+    return {
+        p.stem: p.read_text(encoding=&quot;utf-8&quot;)
+        for p in sorted(HANDBOOK_DIR.glob(&quot;*.md&quot;))
+    }
+
+
+def split_by_heading(text: str) -&gt; list[tuple[str, str]]:
+    &quot;&quot;&quot;把一篇文档按二级标题切成 [(小节标题, 正文), ...]。&quot;&quot;&quot;
+    chunks: list[tuple[str, str]] = []
+    title, buf = &quot;（前言）&quot;, []
+    for line in text.splitlines():
+        if line.startswith(&quot;## &quot;):
+            if buf:
+                chunks.append((title, &quot;\n&quot;.join(buf).strip()))
+            title, buf = line[3:].strip(), []
+        else:
+            buf.append(line)
+    if buf:
+        chunks.append((title, &quot;\n&quot;.join(buf).strip()))
+    return chunks
+
+
+def search_handbook(query: str, top_k: int = 3) -&gt; list[tuple[str, str, float]]:
+    &quot;&quot;&quot;极简词法检索：按查询词元与小节词元的覆盖率打分。
+
+    返回 [(出处, 小节正文, 得分)]，按得分降序。用词法而非向量，
+    是为了让本案例聚焦 MCP 协议本身，且结果稳定可复现。
+    &quot;&quot;&quot;
+    q = set(_tokens(query))
+    if not q:
+        return []
+
+    scored: list[tuple[str, str, float]] = []
+    for doc_name, text in load_sections().items():
+        for title, body in split_by_heading(text):
+            hay = set(_tokens(title + &quot;\n&quot; + body))
+            if not hay:
+                continue
+            # 覆盖率为主，标题命中给额外加权
+            hit = len(q &amp; hay) / len(q)
+            title_hit = len(q &amp; set(_tokens(title))) / len(q)
+            score = hit + 0.5 * title_hit
+            if score &gt; 0:
+                scored.append((f&quot;{doc_name}.md › {title}&quot;, body, score))
+
+    scored.sort(key=lambda x: x[2], reverse=True)
+    return scored[:top_k]
+
+
+def banner(title: str) -&gt; None:
+    &quot;&quot;&quot;终端分隔标题，让每一步的输出边界清晰。&quot;&quot;&quot;
+    print(&quot;\n&quot; + &quot;=&quot; * 70)
+    print(f&quot;  {title}&quot;)
+    print(&quot;=&quot; * 70)
+
+
+if __name__ == &quot;__main__&quot;:
+    banner(&quot;自检：知识库与检索&quot;)
+    secs = load_sections()
+    print(f&quot;知识库文件: {list(secs)}&quot;)
+    print(f&quot;小节总数  : {sum(len(split_by_heading(t)) for t in secs.values())}&quot;)
+    print(&quot;\n检索「响应变慢 连接池」:&quot;)
+    for name, body, score in search_handbook(&quot;响应变慢 连接池&quot;, top_k=3):
+        print(f&quot;  [{score:.3f}] {name}  ({len(body)} 字)&quot;)
+</pre></div>
+  </details>
+
+  <h3>server_changes.py 完整源码</h3>
+  <details>
+    <summary>server_changes.py · 第二个 MCP 服务端（约 110 行）</summary>
+    <div class="d-body"><pre class="lang-py">&quot;&quot;&quot;第二个 MCP 服务端：变更记录（Change Log）。
+
+它的存在是为了演示 MCP 的**可组合性**：
+每个服务端可以由不同团队、不同语言、不同进程独立开发，
+客户端把多个服务端聚合起来，模型就能同时看到多来源的上下文。
+
+排查延迟问题时，「最近有没有发布/改配置」往往是决定性的上下文，
+但它不在运维手册里 —— 它属于另一个系统。这正是多服务端的价值。
+&quot;&quot;&quot;
+
+from __future__ import annotations
+
+import json
+
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP(&quot;change-log&quot;)
+
+# 变更记录（写死以保证输出可复现）
+_CHANGES = {
+    &quot;order-api&quot;: [
+        {
+            &quot;time&quot;: &quot;2026-10-03 09:20&quot;,
+            &quot;type&quot;: &quot;deploy&quot;,
+            &quot;version&quot;: &quot;1.8.2&quot;,
+            &quot;operator&quot;: &quot;zhang&quot;,
+            &quot;summary&quot;: &quot;新增订单查询二级缓存，缓存 TTL 60s&quot;,
+            &quot;risk&quot;: &quot;medium&quot;,
+        },
+        {
+            &quot;time&quot;: &quot;2026-10-02 14:10&quot;,
+            &quot;type&quot;: &quot;config&quot;,
+            &quot;version&quot;: &quot;-&quot;,
+            &quot;operator&quot;: &quot;li&quot;,
+            &quot;summary&quot;: &quot;DB_POOL_SIZE 由 30 调整为 40&quot;,
+            &quot;risk&quot;: &quot;low&quot;,
+        },
+        {
+            &quot;time&quot;: &quot;2026-10-01 11:00&quot;,
+            &quot;type&quot;: &quot;deploy&quot;,
+            &quot;version&quot;: &quot;1.8.1&quot;,
+            &quot;operator&quot;: &quot;wang&quot;,
+            &quot;summary&quot;: &quot;修复取消订单的幂等键生成逻辑&quot;,
+            &quot;risk&quot;: &quot;low&quot;,
+        },
+    ],
+    &quot;inventory-api&quot;: [
+        {
+            &quot;time&quot;: &quot;2026-10-03 08:05&quot;,
+            &quot;type&quot;: &quot;deploy&quot;,
+            &quot;version&quot;: &quot;2.4.0&quot;,
+            &quot;operator&quot;: &quot;chen&quot;,
+            &quot;summary&quot;: &quot;库存扣减改为异步批处理&quot;,
+            &quot;risk&quot;: &quot;high&quot;,
+        }
+    ],
+}
+
+
+@mcp.tool()
+def search_changes(service: str, days: int = 3) -&gt; str:
+    &quot;&quot;&quot;查询某个服务最近的变更记录（发布、配置修改）。
+
+    排查线上问题时，「最近有没有变更」往往是关键线索，务必先查。
+
+    Args:
+        service: 服务名，可用的有 order-api、inventory-api
+        days: 查询最近多少天的变更，默认 3
+    &quot;&quot;&quot;
+    items = _CHANGES.get(service)
+    if items is None:
+        return f&quot;没有「{service}」的变更记录。已知服务：{&#x27;, &#x27;.join(_CHANGES)}&quot;
+    return json.dumps(
+        {&quot;service&quot;: service, &quot;days&quot;: days, &quot;count&quot;: len(items), &quot;changes&quot;: items},
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+@mcp.tool()
+def get_change_detail(service: str, version: str) -&gt; str:
+    &quot;&quot;&quot;查询某次具体变更的详情（含变更内容与风险等级）。
+
+    Args:
+        service: 服务名
+        version: 版本号，如 1.8.2
+    &quot;&quot;&quot;
+    for it in _CHANGES.get(service, []):
+        if it[&quot;version&quot;] == version:
+            return json.dumps(it, ensure_ascii=False, indent=2)
+    return f&quot;未找到 {service} 的版本 {version}&quot;
+
+
+@mcp.resource(&quot;changes://order-api/recent&quot;)
+def recent_changes() -&gt; str:
+    &quot;&quot;&quot;order-api 最近的变更记录（供排查时作为背景上下文）。&quot;&quot;&quot;
+    return json.dumps(_CHANGES[&quot;order-api&quot;], ensure_ascii=False, indent=2)
+
+
+@mcp.prompt()
+def correlate_change(service: str, symptom_time: str) -&gt; str:
+    &quot;&quot;&quot;生成「症状与变更关联分析」提示词。
+
+    Args:
+        service: 出现症状的服务名
+        symptom_time: 症状首次出现的时间，格式 YYYY-MM-DD HH:MM
+    &quot;&quot;&quot;
+    return (
+        f&quot;{service} 在 {symptom_time} 前后出现异常。\n\n&quot;
+        f&quot;请先调用 search_changes 查询 {service} 最近的变更记录，&quot;
+        &quot;再判断异常是否与某次变更在时间上吻合。\n&quot;
+        &quot;若吻合，调用 get_change_detail 取出该次变更的详情。\n\n&quot;
+        &quot;输出要求：明确指出「时间吻合的变更」是哪一条，&quot;
+        &quot;并给出「该变更是否可能是诱因」的判断与理由。&quot;
+    )
+
+
+if __name__ == &quot;__main__&quot;:
+    mcp.settings.log_level = &quot;WARNING&quot;  # 见 server_ops.py 中的说明
+    mcp.run()
+</pre></div>
+  </details>
+
+  <h3>参考文档</h3>
+  <ul class="list">
+    <li><a href="https://modelcontextprotocol.io/" target="_blank" rel="noopener">MCP 官方文档 · 协议规范与概念</a></li>
+    <li><a href="https://spec.modelcontextprotocol.io/specification/2025-11-25/" target="_blank" rel="noopener">MCP 规范 2025-11-25（本文协商到的版本）</a></li>
+    <li><a href="https://github.com/modelcontextprotocol/python-sdk" target="_blank" rel="noopener">MCP Python SDK（含 FastMCP）</a></li>
+    <li><a href="https://github.com/langchain-ai/langchain-mcp-adapters" target="_blank" rel="noopener">langchain-mcp-adapters 官方仓库</a></li>
+    <li><a href="https://docs.langchain.com/oss/python/langchain/agents" target="_blank" rel="noopener">LangChain · create_agent 文档</a></li>
+    <li><a href="https://ollama.com/library/llama3.2" target="_blank" rel="noopener">Ollama · llama3.2 模型页</a></li>
+  </ul>
+</section>
+
+</main>
+</div>
+
+<div class="wrap">
+  <footer>
+    <span>LANGCHAIN × OLLAMA × MCP — PROTOCOL &amp; CONTEXT FIELD MANUAL</span>
+    <span>ALL OUTPUTS VERIFIED BY REAL EXECUTION · 2026-10-03</span>
+  </footer>
+</div>
+
+<button id="top" title="回到顶部">↑</button>
+
+<script>
+/* ---------- 进度条 + 回顶 ---------- */
+const prog = document.getElementById('progress');
+const topBtn = document.getElementById('top');
+addEventListener('scroll', () => {
+  const h = document.documentElement;
+  const p = h.scrollTop / (h.scrollHeight - h.clientHeight);
+  prog.style.width = (p * 100) + '%';
+  topBtn.classList.toggle('show', h.scrollTop > 600);
+}, {passive: true});
+topBtn.onclick = () => scrollTo({top: 0, behavior: 'smooth'});
+
+/* ---------- TOC scrollspy ---------- */
+const tocLinks = [...document.querySelectorAll('#toc a')];
+const secs = tocLinks.map(a => document.querySelector(a.getAttribute('href')));
+const spy = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      const id = '#' + e.target.id;
+      tocLinks.forEach(a => a.classList.toggle('on', a.getAttribute('href') === id));
+    }
+  });
+}, {rootMargin: '-15% 0px -70% 0px'});
+secs.forEach(s => s && spy.observe(s));
+
+/* ---------- 轻量语法高亮 ---------- */
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+const PY_KW = new Set(('from import def return for in if elif else while not and or None True False '
+  + 'lambda with as class try except raise pass yield is del global assert break continue async await').split(' '));
+const PY_BUILTIN = new Set(('print len range float str int list dict set tuple enumerate zip sum min max '
+  + 'open isinstance type super self repr sorted any all').split(' '));
+
+const PY_RE = /(?:[rRuUbBfF]{1,2}(?:"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|"""[\s\S]*?"""|'''[\s\S]*?'''|#[^\n]*|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|\b\d+(?:\.\d+)?\b|[A-Za-z_][A-Za-z0-9_]*)/g;
+
+function hlPy(code){
+  let out = '', last = 0, m;
+  PY_RE.lastIndex = 0;
+  while ((m = PY_RE.exec(code)) !== null) {
+    out += esc(code.slice(last, m.index));
+    const t = m[0];
+    let cls = '';
+    if (t[0] === '#') cls = 'tok-c';
+    else if (/^(?:[rRuUbBfF]{1,2})?["']/.test(t) || t.startsWith('"""') || t.startsWith("'''")) cls = 'tok-s';
+    else if (/^\d/.test(t)) cls = 'tok-n';
+    else if (PY_KW.has(t)) cls = 'tok-k';
+    else {
+      const rest = code.slice(m.index + t.length);
+      if (/^\s*\(/.test(rest)) cls = 'tok-f';
+      else if (PY_BUILTIN.has(t)) cls = 'tok-f';
+      else cls = '';
+    }
+    out += cls ? '<span class="' + cls + '">' + esc(t) + '</span>' : esc(t);
+    last = m.index + t.length;
+  }
+  out += esc(code.slice(last));
+  return out;
+}
+
+const BASH_RE = /("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|#[^\n]*|^\s*\$.*$|\b(?:pip|python|ollama|for|do|done|cd|ls|curl)\b)/gm;
+function hlBash(code){
+  let out = '', last = 0, m;
+  BASH_RE.lastIndex = 0;
+  while ((m = BASH_RE.exec(code)) !== null) {
+    out += esc(code.slice(last, m.index));
+    const t = m[0];
+    let cls = 'tok-c';
+    if (t[0] === '#') cls = 'tok-c';
+    else if (t.trim().startsWith('$')) cls = 'tok-p';
+    else if (t[0] === '"' || t[0] === "'") cls = 'tok-s';
+    else cls = 'tok-f';
+    out += '<span class="' + cls + '">' + esc(t) + '</span>';
+    last = m.index + t.length;
+  }
+  out += esc(code.slice(last));
+  return out;
+}
+
+const OUT_RE = /(\d+\.\d+|\b\d+ms\b|'[^']{0,28}'|\{[^}\n]{0,28}\}|\[[^\]\n]{1,24}\])/g;
+function hlOut(code){
+  let out = '', last = 0, m;
+  OUT_RE.lastIndex = 0;
+  while ((m = OUT_RE.exec(code)) !== null) {
+    out += esc(code.slice(last, m.index));
+    const t = m[0];
+    const cls = /^\d/.test(t) ? 'tok-num' : 'tok-tag';
+    out += '<span class="' + cls + '">' + esc(t) + '</span>';
+    last = m.index + t.length;
+  }
+  out += esc(code.slice(last));
+  return out;
+}
+
+document.querySelectorAll('pre.lang-py').forEach(p => { p.innerHTML = hlPy(p.textContent); });
+document.querySelectorAll('pre.lang-bash').forEach(p => { p.innerHTML = hlBash(p.textContent); });
+document.querySelectorAll('pre.lang-out').forEach(p => { p.innerHTML = hlOut(p.textContent); });
+
+/* ---------- 复制按钮（Clipboard API + execCommand 降级） ---------- */
+function legacyCopy(txt){
+  return new Promise((res, rej) => {
+    const ta = document.createElement('textarea');
+    ta.value = txt;
+    ta.style.cssText = 'position:fixed;top:-999px;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch(e){ ok = false; }
+    ta.remove();
+    ok ? res() : rej(new Error('execCommand failed'));
+  });
+}
+function copyText(txt){
+  return legacyCopy(txt).catch(() => {
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(txt);
+    throw new Error('no copy api');
+  });
+}
+document.querySelectorAll('.copy').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const pre = btn.closest('.block').querySelector('pre');
+    const reset = () => setTimeout(() => btn.textContent = 'copy', 1600);
+    copyText(pre.textContent).then(() => { btn.textContent = '已复制 ✓'; reset(); })
+      .catch(() => {
+        const r = document.createRange();
+        r.selectNodeContents(pre);
+        const sel = getSelection();
+        sel.removeAllRanges(); sel.addRange(r);
+        btn.textContent = '已选中 Ctrl+C'; reset();
+      });
+  });
+});
+</script>
+</body>
+</html>
+
