@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>xunxiancoming · 把踩过的坑，写成走过的路</title>
-<meta name="description" content="xunxiancoming 的个人技术笔记 —— LangChain、Ollama、Redis Stack、MCP 与本地 RAG 实战。3 篇文章 29 节，所有输出均为真实运行结果。">
+<meta name="description" content="xunxiancoming 的个人技术笔记 —— LangChain、Ollama、Redis Stack、MCP 与本地 RAG 实战，以及 React Fiber 源码拆解。4 篇文章 37 节，实战输出均为真实运行结果。">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='18' fill='%23d93a1e'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='%23f7f4ec' font-family='Georgia,serif' font-weight='bold'>X</text></svg>">
 <style>
 :root{
@@ -314,18 +314,19 @@ footer a:hover{color:var(--vermilion);border-bottom-color:var(--vermilion)}
       写成<em>走过的路</em>
     </h1>
     <p class="lead">
-      这里是 <b>xunxiancoming</b> 的技术笔记 —— 记录 <b>AI 应用工程</b> 与 <b>后端实战</b>：
-      从本地 Embeddings 到向量持久化，从检索生成到 MCP 协议与研报问答。每一篇的终端输出都来自
-      <b>真实运行</b>，代码可复跑，非示意、非截图转述。
+      这里是 <b>xunxiancoming</b> 的技术笔记 —— 记录 <b>AI 应用工程</b>、<b>后端实战</b> 与 <b>前端源码</b>：
+      从本地 Embeddings 到向量持久化，从检索生成到 MCP 协议与研报问答，再到 React Fiber 的可中断渲染。
+      实战篇的终端输出均来自 <b>真实运行</b>，原理篇附可复制运行的代码，非示意、非截图转述。
     </p>
     <div class="chips">
-      <span class="chip hot">3 篇已发布 · 约 47 分钟</span>
+      <span class="chip hot">4 篇已发布 · 约 72 分钟</span>
       <span class="chip">LangChain</span>
       <span class="chip">Ollama</span>
       <span class="chip">Redis Stack</span>
       <span class="chip">Milvus</span>
       <span class="chip">RAG</span>
       <span class="chip">MCP</span>
+      <span class="chip">React Fiber</span>
       <span class="chip">Python</span>
     </div>
     <div class="stamp">
@@ -333,8 +334,8 @@ footer a:hover{color:var(--vermilion);border-bottom-color:var(--vermilion)}
       <small>真实运行验证</small>
     </div>
     <div class="stats">
-      <div class="stat"><div class="num">03</div><div class="lab">Posts · 文章</div></div>
-      <div class="stat"><div class="num">29</div><div class="lab">Sections · 章节</div></div>
+      <div class="stat"><div class="num">04</div><div class="lab">Posts · 文章</div></div>
+      <div class="stat"><div class="num">37</div><div class="lab">Sections · 章节</div></div>
       <div class="stat"><div class="num">16</div><div class="lab">Scripts · 可复跑脚本</div></div>
       <div class="stat"><div class="num">30</div><div class="lab">Real Outputs · 真实输出块</div></div>
     </div>
@@ -342,8 +343,8 @@ footer a:hover{color:var(--vermilion);border-bottom-color:var(--vermilion)}
 
   <div class="marquee" aria-hidden="true">
     <div class="marquee-track">
-      <span>Redis Stack 向量检索</span><i>✦</i><span>LangChain</span><i>✦</i><span>Ollama</span><i>✦</i><span>MCP Protocol</span><i>✦</i><span>JSON-RPC 2.0</span><i>✦</i><span>FastMCP</span><i>✦</i><span>Embeddings 768-dim</span><i>✦</i><span>Redis Stack</span><i>✦</i><span>Milvus Lite</span><i>✦</i><span>RAG Pipeline</span><i>✦</i><span>实战笔记</span><i>✦</i>
-      <span>LangChain</span><i>✦</i><span>Ollama</span><i>✦</i><span>MCP Protocol</span><i>✦</i><span>JSON-RPC 2.0</span><i>✦</i><span>FastMCP</span><i>✦</i><span>Embeddings 768-dim</span><i>✦</i><span>Redis Stack</span><i>✦</i><span>Milvus Lite</span><i>✦</i><span>RAG Pipeline</span><i>✦</i><span>实战笔记</span><i>✦</i>
+      <span>Redis Stack 向量检索</span><i>✦</i><span>LangChain</span><i>✦</i><span>Ollama</span><i>✦</i><span>MCP Protocol</span><i>✦</i><span>JSON-RPC 2.0</span><i>✦</i><span>FastMCP</span><i>✦</i><span>Embeddings 768-dim</span><i>✦</i><span>Redis Stack</span><i>✦</i><span>Milvus Lite</span><i>✦</i><span>RAG Pipeline</span><i>✦</i><span>React Fiber</span><i>✦</i><span>双缓存树</span><i>✦</i><span>Lane 车道</span><i>✦</i><span>时间切片</span><i>✦</i><span>实战笔记</span><i>✦</i>
+      <span>Redis Stack 向量检索</span><i>✦</i><span>LangChain</span><i>✦</i><span>Ollama</span><i>✦</i><span>MCP Protocol</span><i>✦</i><span>JSON-RPC 2.0</span><i>✦</i><span>FastMCP</span><i>✦</i><span>Embeddings 768-dim</span><i>✦</i><span>Redis Stack</span><i>✦</i><span>Milvus Lite</span><i>✦</i><span>RAG Pipeline</span><i>✦</i><span>React Fiber</span><i>✦</i><span>双缓存树</span><i>✦</i><span>Lane 车道</span><i>✦</i><span>时间切片</span><i>✦</i><span>实战笔记</span><i>✦</i>
     </div>
   </div>
 
@@ -432,7 +433,35 @@ footer a:hover{color:var(--vermilion);border-bottom-color:var(--vermilion)}
       </div>
     </a>
 
-<p class="soon reveal">MORE <b>·</b> 更多文章在路上 —— 持续挖坑，持续填坑</p>
+    <a class="post reveal" href="posts/react-fiber.html">
+      <div class="post-top">
+        <span class="post-no">NO.004</span>
+        <span class="post-date">2026-10-06</span>
+        <span class="badge real">4 个交互动画 · Interactive</span>
+        <span class="badge">深度长文 · Deep Dive</span>
+      </div>
+      <h3>React Fiber 原理拆解<br>从 setState 到可中断渲染</h3>
+      <p class="post-desc">
+        React 只是一个 JS 库，凭什么能一边算一边停、谁着急先给谁、还不会把页面搞崩？
+        从「三问题地图」开篇，逐章拆开 Fiber 架构：三指针链表如何替代不可中断的递归、
+        双缓存树如何让「中途放弃」变成零成本、31 位 Lane 车道如何决定谁能插队，
+        以及每 5ms 一次的时间切片究竟切在了哪里。附 4 个可视化演示与 200 行迷你 Fiber 实现。
+      </p>
+      <div class="post-tags">
+        <span class="tag">react</span>
+        <span class="tag">fiber</span>
+        <span class="tag">源码解析</span>
+        <span class="tag">双缓存</span>
+        <span class="tag">lane</span>
+        <span class="tag">时间切片</span>
+      </div>
+      <div class="post-foot">
+        <span class="post-meta">8 节 · 4 个可视化演示 · 200 行迷你实现 · 阅读约 25 分钟</span>
+        <span class="read">阅读全文 <span class="arw">→</span></span>
+      </div>
+    </a>
+
+    <p class="soon reveal">MORE <b>·</b> 更多文章在路上 —— 持续挖坑，持续填坑</p>
   </section>
 
   <section class="sec about" id="about">
@@ -445,7 +474,7 @@ footer a:hover{color:var(--vermilion);border-bottom-color:var(--vermilion)}
       <div class="reveal">
         <p>
           <b>xunxiancoming</b> —— 一个相信「坑要一个个填，路要一步步走」的开发者。
-          平时折腾 <b>Python</b>、<b>大模型应用</b> 与 <b>分布式存储</b>，喜欢把一次跑通的完整过程
+          平时折腾 <b>Python</b>、<b>大模型应用</b>、<b>分布式存储</b> 与 <b>React 源码</b>，喜欢把一次跑通的完整过程
           写成可以照着复现的教程：环境、代码、真实输出、踩过的坑，一个都不省略。
         </p>
         <p>
@@ -461,6 +490,7 @@ footer a:hover{color:var(--vermilion);border-bottom-color:var(--vermilion)}
           <li>Language <span>Python 3.10</span></li>
           <li>LLM Runtime <span>Ollama</span></li>
           <li>Framework <span>LangChain 1.4</span></li>
+          <li>Frontend <span>React 18</span></li>
           <li>Vector DB <span>Redis / Milvus</span></li>
           <li>Platform <span>GitHub Pages</span></li>
           <li>Type <span>手写 HTML</span></li>

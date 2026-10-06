@@ -1,0 +1,1609 @@
+<!DOCTYPE html>
+<!-- saved from url=(0012)about:srcdoc -->
+<html lang="zh-CN"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>React Fiber 原理拆解 · 从 setState 到可中断渲染</title>
+<meta name="description" content="React Fiber 原理逐步拆解 —— 三指针链表、双缓存树、Lane 车道、时间切片，附四个可视化演示与 200 行迷你 Fiber 实现。">
+<style>
+/* ═══════════════════════════════════════════
+   React Fiber 原理拆解 · 单页教程
+   配色与组件遵循 xunxiancoming.github.io 站点规范
+   ═══════════════════════════════════════════ */
+
+:root{
+  --paper:#f7f4ec;
+  --paper-2:#efeadd;
+  --ink:#16130e;
+  --ink-2:#4a443a;
+  --ink-3:#7a7264;
+  --vermilion:#d93a1e;
+  --vermilion-deep:#a92a12;
+  --teal:#0f6b62;
+  --rule:rgba(22,19,14,.16);
+  --rule-strong:rgba(22,19,14,.5);
+  --code-bg:#14171c;
+  --code-fg:#c9d1d9;
+  --card:#fffdf7;
+  --shadow:0 2px 0 rgba(22,19,14,.9);
+  --shadow-lift:0 6px 0 rgba(22,19,14,.9);
+  --mono:"JetBrains Mono","Fira Code","SF Mono",Consolas,"Liberation Mono",monospace;
+  --serif:"Noto Serif CJK SC","Source Han Serif SC","Songti SC","SimSun",Georgia,serif;
+  --sans:"Noto Sans CJK SC","Source Han Sans SC","PingFang SC","Microsoft YaHei",-apple-system,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#14161a;
+    --paper-2:#1b1e24;
+    --ink:#e9e4d8;
+    --ink-2:#b5aea0;
+    --ink-3:#857e70;
+    --vermilion:#ff6a4d;
+    --vermilion-deep:#ff8f78;
+    --teal:#4fd1c0;
+    --rule:rgba(233,228,216,.16);
+    --rule-strong:rgba(233,228,216,.45);
+    --card:#1a1d23;
+    --shadow:0 2px 0 rgba(0,0,0,.6);
+    --shadow-lift:0 6px 0 rgba(0,0,0,.6);
+  }
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;scroll-padding-top:70px}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--sans);
+  line-height:1.75;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+/* 方格纸底纹 */
+body::before{
+  content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background-image:
+    repeating-linear-gradient(0deg,var(--rule) 0 1px,transparent 1px 34px),
+    repeating-linear-gradient(90deg,var(--rule) 0 1px,transparent 1px 34px);
+  opacity:.5;
+}
+body::after{
+  content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.35;
+  background:radial-gradient(ellipse 80% 60% at 50% -10%,rgba(217,58,30,.10),transparent 60%);
+}
+a{color:inherit;text-decoration:none}
+::selection{background:var(--vermilion);color:#fff}
+strong,b{font-weight:700}
+
+#progress{position:fixed;top:0;left:0;height:3px;width:0;background:var(--vermilion);z-index:99;transition:width .12s linear}
+
+.wrap{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:0 28px}
+
+/* ══════════ HERO ══════════ */
+header.hero{
+  border-bottom:3px solid var(--ink);
+  padding:72px 0 40px;
+  position:relative;overflow:hidden;
+}
+.hero .eyebrow{
+  font-family:var(--mono);font-size:12.5px;letter-spacing:.34em;text-transform:uppercase;
+  color:var(--vermilion);font-weight:700;margin-bottom:22px;
+  animation:rise .7s .05s both;
+}
+.hero h1{
+  font-family:var(--serif);font-weight:900;
+  font-size:clamp(32px,5vw,58px);line-height:1.16;letter-spacing:-.01em;
+  max-width:16em;animation:rise .7s .15s both;
+}
+.hero h1 em{font-style:normal;color:var(--vermilion);position:relative;white-space:nowrap}
+.hero h1 em::after{
+  content:"";position:absolute;left:0;right:0;bottom:.06em;height:.14em;
+  background:var(--vermilion);opacity:.28;transform:scaleX(0);transform-origin:left;
+  animation:swipe .8s .9s forwards;
+}
+.hero .sub{
+  margin-top:24px;max-width:44em;color:var(--ink-2);font-size:17.5px;
+  animation:rise .7s .3s both;
+}
+.hero .sub b{color:var(--ink);border-bottom:2px solid var(--vermilion)}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:32px;animation:rise .7s .45s both}
+.chip{
+  font-family:var(--mono);font-size:12.5px;padding:5px 13px;
+  border:1.5px solid var(--ink);background:var(--card);
+  box-shadow:var(--shadow);
+}
+.chip.hot{background:var(--vermilion);color:#fff;border-color:var(--vermilion-deep)}
+.hero .stamp{
+  position:absolute;right:-8px;top:64px;transform:rotate(9deg);
+  border:3px solid var(--vermilion);color:var(--vermilion);
+  font-family:var(--mono);font-weight:800;font-size:13px;line-height:1.35;
+  padding:10px 16px;text-align:center;letter-spacing:.08em;
+  opacity:.85;border-radius:4px;
+  animation:stampIn .5s 1.1s both;
+}
+.hero .stamp small{display:block;font-size:10.5px;letter-spacing:.2em;opacity:.85;margin-top:3px}
+@media(max-width:820px){.hero .stamp{display:none}}
+
+@keyframes rise{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:none}}
+@keyframes swipe{to{transform:scaleX(1)}}
+@keyframes stampIn{from{opacity:0;transform:rotate(9deg) scale(1.6)}to{opacity:.85;transform:rotate(9deg) scale(1)}}
+
+/* ══════════ 布局 + 侧栏目录 ══════════ */
+.layout{display:grid;grid-template-columns:210px minmax(0,1fr);gap:46px;padding:52px 0 90px}
+.layout>main{min-width:0}
+@media(max-width:1040px){.layout{grid-template-columns:minmax(0,1fr);gap:0}nav.toc{display:none}}
+
+nav.toc{position:sticky;top:34px;align-self:start;font-family:var(--mono);font-size:12.5px}
+nav.toc .toc-title{letter-spacing:.28em;color:var(--ink-3);font-size:11px;margin-bottom:14px;font-weight:700}
+nav.toc a{
+  display:block;padding:6px 0 6px 14px;color:var(--ink-2);border:0;
+  border-left:2px solid var(--rule);transition:.18s;line-height:1.5;
+}
+nav.toc a:hover{color:var(--ink);border-left-color:var(--ink-3)}
+nav.toc a.on{
+  color:var(--vermilion);border-left:2px solid var(--vermilion);font-weight:700;
+  background:linear-gradient(90deg,rgba(217,58,30,.09),transparent);
+}
+
+/* ══════════ 章节 ══════════ */
+section{margin-bottom:56px}
+.sec-head{display:flex;align-items:flex-start;gap:18px;border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:30px}
+.sec-num{
+  font-family:var(--mono);font-weight:800;font-size:clamp(38px,7vw,58px);line-height:.9;
+  color:transparent;-webkit-text-stroke:2px var(--ink);flex-shrink:0;
+}
+.sec-head h2{font-family:var(--serif);font-size:clamp(23px,3.4vw,32px);font-weight:800;line-height:1.3;flex:1}
+.sec-head .tag{
+  font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--vermilion);
+  border:1.5px solid var(--vermilion);padding:3px 9px;align-self:center;white-space:nowrap;font-weight:700;
+}
+
+h3{
+  font-family:var(--serif);font-size:20.5px;font-weight:800;margin:34px 0 12px;
+  display:flex;align-items:center;gap:10px;
+}
+h3::before{
+  content:"";width:14px;height:14px;background:var(--vermilion);flex-shrink:0;
+  clip-path:polygon(0 0,100% 0,100% 65%,65% 100%,0 100%);
+}
+h4{font-family:var(--serif);font-size:17.5px;font-weight:800;margin:24px 0 10px}
+p{margin-bottom:16px;color:var(--ink-2)}
+p b,li b{color:var(--ink)}
+
+code.inline{
+  font-family:var(--mono);font-size:.87em;background:var(--paper-2);
+  border:1px solid var(--rule);padding:1px 6px;border-radius:3px;color:var(--vermilion-deep);
+  white-space:nowrap;
+}
+
+/* 列表 */
+ul.list{list-style:none;margin:16px 0}
+ul.list li{position:relative;padding-left:24px;margin-bottom:9px;color:var(--ink-2)}
+ul.list li::before{content:"▸";position:absolute;left:4px;color:var(--vermilion);font-weight:700}
+
+ol.steps{list-style:none;counter-reset:s;margin:18px 0}
+ol.steps li{
+  counter-increment:s;position:relative;padding-left:52px;margin-bottom:18px;color:var(--ink-2);
+}
+ol.steps li::before{
+  content:counter(s,decimal-leading-zero);position:absolute;left:0;top:1px;
+  font-family:var(--mono);font-size:12px;font-weight:800;
+  color:var(--vermilion);border:1.5px solid var(--vermilion);
+  width:34px;height:26px;display:flex;align-items:center;justify-content:center;
+}
+ol.steps li b{color:var(--ink);display:block}
+
+/* 口语段（原「老师」批注 → 站点 style 的左批注） */
+.voice{
+  border-left:6px solid var(--teal);background:color-mix(in srgb,var(--teal) 6%,transparent);
+  padding:16px 22px;margin:22px 0;color:var(--ink-2);font-size:15.5px;
+}
+.voice::before{
+  content:"老师 · TEACHER'S NOTE";font-family:var(--mono);font-size:10.5px;font-weight:800;
+  letter-spacing:.2em;color:var(--teal);display:block;margin-bottom:7px;
+}
+
+/* ══════════ principle 批注卡 ══════════ */
+.principle{
+  background:var(--card);border:1.5px solid var(--ink);border-left:7px solid var(--vermilion);
+  padding:20px 24px;margin:22px 0;box-shadow:var(--shadow);position:relative;
+}
+.principle .p-label{
+  position:absolute;top:-11px;left:16px;background:var(--vermilion);color:#fff;
+  font-family:var(--mono);font-size:11px;font-weight:800;letter-spacing:.2em;padding:2px 10px;
+}
+.principle h4{font-family:var(--serif);font-size:17.5px;margin:6px 0 8px;font-weight:800}
+.principle p{margin-bottom:8px;font-size:15.5px}
+.principle p:last-child{margin-bottom:0}
+.principle.teal{border-left-color:var(--teal)}
+.principle.teal .p-label{background:var(--teal)}
+.principle.dark{border-left-color:var(--ink)}
+.principle.dark .p-label{background:var(--ink);color:var(--paper)}
+
+/* ══════════ callout ══════════ */
+.callout{
+  border:2px dashed var(--teal);background:rgba(15,107,98,.06);
+  padding:16px 20px;margin:22px 0;font-size:15px;color:var(--ink-2);
+}
+.callout b{color:var(--teal)}
+
+/* ══════════ 代码块（终端窗口） ══════════ */
+.block{
+  margin:22px 0 30px;border:1.5px solid var(--ink);box-shadow:var(--shadow);
+  background:var(--code-bg);position:relative;
+}
+.block-bar{
+  display:flex;align-items:center;gap:12px;padding:8px 14px;
+  background:#0d0f13;border-bottom:1px solid rgba(255,255,255,.1);
+  font-family:var(--mono);font-size:11.5px;color:#8b949e;letter-spacing:.06em;
+}
+.block-bar .dot{
+  width:9px;height:9px;border-radius:50%;background:#ff5f56;
+  box-shadow:14px 0 0 #ffbd2e,28px 0 0 #27c93f;margin-right:30px;flex-shrink:0;
+}
+.block-bar .fname{color:#e6edf3;font-weight:700}
+.block-bar .lang{color:var(--vermilion);border:1px solid var(--vermilion);padding:0 7px;font-size:10.5px;font-weight:700}
+.block-bar .copy{
+  margin-left:auto;cursor:pointer;color:#8b949e;border:1px solid #30363d;
+  padding:2px 10px;font-family:var(--mono);font-size:11px;transition:.15s;background:transparent;
+}
+.block-bar .copy:hover{color:#fff;border-color:var(--vermilion);background:var(--vermilion)}
+.block pre{
+  margin:0;padding:18px 20px;overflow-x:auto;
+  font-family:var(--mono);font-size:13px;line-height:1.72;color:var(--code-fg);
+  white-space:pre;tab-size:4;
+}
+/* 语法着色（贴近站点 token 色） */
+.tok-k{color:#ff7b72}
+.tok-f{color:#79c0ff}
+.tok-s{color:#a5d6ff}
+.tok-n{color:#d2a8ff}
+.tok-c{color:#6a737d;font-style:italic}
+.tok-t{color:#7ee787}
+.tok-p{color:#c9d1d9}
+
+/* ══════════ 表格 ══════════ */
+.tablewrap{
+  overflow-x:auto;margin:22px 0;border:1.5px solid var(--ink);
+  box-shadow:var(--shadow);background:var(--card);
+}
+table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:560px}
+th,td{padding:11px 15px;text-align:left;border-bottom:1px solid var(--rule)}
+th{
+  background:var(--ink);color:var(--paper);font-family:var(--mono);
+  font-size:12.5px;letter-spacing:.08em;font-weight:700;
+}
+tbody tr:nth-child(even){background:rgba(0,0,0,.025)}
+@media(prefers-color-scheme:dark){tbody tr:nth-child(even){background:rgba(255,255,255,.03)}}
+td:first-child{font-weight:700;color:var(--ink)}
+td b.red{color:var(--vermilion)}
+tbody tr:last-child td{border-bottom:0}
+td code{font-family:var(--mono);font-size:12.8px;color:var(--vermilion-deep)}
+
+/* ══════════ pitfall ══════════ */
+.pitfall{
+  border:1.5px solid var(--rule-strong);background:var(--card);margin-bottom:14px;
+  display:grid;grid-template-columns:56px 1fr;overflow:hidden;
+}
+.pitfall .no{
+  background:repeating-linear-gradient(45deg,var(--vermilion),var(--vermilion) 7px,var(--vermilion-deep) 7px,var(--vermilion-deep) 14px);
+  color:#fff;font-family:var(--mono);font-weight:800;font-size:18px;
+  display:flex;align-items:center;justify-content:center;
+}
+.pitfall .body{padding:14px 18px}
+.pitfall h5{font-family:var(--serif);font-size:16.5px;font-weight:800;margin-bottom:5px}
+.pitfall p{font-size:14.5px;margin:0;color:var(--ink-2)}
+
+/* ══════════ tree ══════════ */
+.tree{
+  font-family:var(--mono);font-size:13px;background:var(--card);
+  border:1.5px solid var(--ink);padding:18px 22px;box-shadow:var(--shadow);
+  line-height:1.95;overflow-x:auto;color:var(--ink-2);white-space:pre-wrap;word-break:break-word;
+}
+.tree b{color:var(--vermilion)}
+.tree .dim{color:var(--ink-3)}
+
+/* ══════════ diagram（静态流程图） ══════════ */
+.diagram{
+  border:2px solid var(--ink);background:var(--card);padding:24px 20px;margin:26px 0;
+  box-shadow:var(--shadow);overflow-x:auto;
+}
+.diagram .lane-title{
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.2em;
+  color:var(--ink-3);font-weight:700;margin-bottom:12px;
+}
+.flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;row-gap:14px}
+.node{
+  border:1.5px solid var(--ink);background:var(--paper);padding:9px 13px;min-width:96px;
+  font-size:13.5px;line-height:1.4;font-weight:600;text-align:center;position:relative;
+}
+.node small{display:block;font-family:var(--mono);font-size:10.5px;color:var(--ink-3);font-weight:400;margin-top:2px}
+.node.persist{border:2.5px solid var(--vermilion);background:rgba(217,58,30,.07)}
+.node.persist small{color:var(--vermilion);font-weight:700}
+.node.model{border-style:dashed}
+.arrow{display:flex;align-items:center;padding:0 9px;color:var(--vermilion);font-size:19px;font-weight:700}
+.lane{margin-bottom:24px}
+.lane:last-child{margin-bottom:0}
+.diagram .legend{
+  margin-top:18px;padding-top:14px;border-top:1px dashed var(--rule);
+  font-size:13px;color:var(--ink-3);font-family:var(--mono);line-height:1.9;
+}
+.diagram .legend b{color:var(--vermilion)}
+
+/* ══════════ 交互演示容器 ══════════ */
+.viz{
+  position:relative;border:2px solid var(--ink);background:var(--card);
+  padding:30px 24px 22px;margin:30px 0;box-shadow:var(--shadow);
+}
+.viz-label{
+  position:absolute;top:-12px;left:16px;background:var(--ink);color:var(--paper);
+  font-family:var(--mono);font-size:10.5px;font-weight:800;letter-spacing:.2em;padding:3px 11px;
+}
+.viz-title{font-family:var(--serif);font-size:18px;font-weight:800;margin:8px 0 6px}
+.viz-desc{font-size:14px;color:var(--ink-3);margin-bottom:22px;max-width:62em}
+
+.controls{
+  display:flex;gap:10px;flex-wrap:wrap;align-items:center;
+  margin-top:22px;padding-top:18px;border-top:1.5px dashed var(--rule-strong);
+}
+.btn{
+  font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.1em;
+  background:var(--paper);color:var(--ink);border:1.5px solid var(--ink);
+  padding:9px 16px;cursor:pointer;box-shadow:2px 2px 0 var(--ink);
+  transition:.18s;text-transform:uppercase;
+}
+.btn:hover{background:var(--vermilion);border-color:var(--vermilion-deep);color:#fff;transform:translate(-2px,-2px);box-shadow:4px 4px 0 var(--ink)}
+.btn.ghost{box-shadow:none;color:var(--ink-2);border-color:var(--rule-strong)}
+.btn.ghost:hover{color:#fff}
+.status-line{
+  font-family:var(--mono);font-size:12px;color:var(--teal);font-weight:700;margin-left:auto;
+}
+.status-line span{color:var(--ink-3);font-weight:400}
+
+/* ══════════ 管道步骤（点击展开） ══════════ */
+.pipe{border:1.5px solid var(--ink);background:var(--card);margin:22px 0;box-shadow:var(--shadow)}
+.pipe-step{
+  display:grid;grid-template-columns:62px 1fr;border-bottom:1px solid var(--rule);
+  cursor:pointer;transition:.2s;
+}
+.pipe-step:last-child{border-bottom:0}
+.pipe-step:hover{background:rgba(217,58,30,.04)}
+.pipe-step.on{background:rgba(217,58,30,.07)}
+.pipe-step .pi{
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:15px;font-weight:800;color:var(--ink-3);
+  border-right:1px solid var(--rule);background:var(--paper-2);
+  transition:.2s;
+}
+.pipe-step.on .pi{color:#fff;background:var(--vermilion)}
+.pipe-step .pc{padding:15px 20px}
+.pipe-step .pc b{
+  font-family:var(--serif);font-size:16px;display:block;margin-bottom:4px;font-weight:800;
+}
+.pipe-step .pc span{font-size:14px;color:var(--ink-2)}
+
+/* ══════════ 双缓存双栏 ══════════ */
+.tree-pair{display:grid;grid-template-columns:1fr 58px 1fr;gap:0;align-items:center}
+@media(max-width:820px){.tree-pair{grid-template-columns:1fr;gap:16px}}
+.tree-box{
+  border:2px solid var(--rule-strong);padding:18px;background:var(--paper);
+  transition:.45s cubic-bezier(.4,0,.2,1);
+}
+.tree-box.current{border-color:var(--teal);background:rgba(15,107,98,.07);box-shadow:3px 3px 0 var(--teal)}
+.tree-box.wip{border-color:var(--vermilion);background:rgba(217,58,30,.07);box-shadow:3px 3px 0 var(--vermilion)}
+.tree-box .tree-head{
+  font-family:var(--mono);font-size:11px;font-weight:800;letter-spacing:.1em;
+  text-transform:uppercase;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;
+}
+.tree-box.current .tree-head{color:var(--teal)}
+.tree-box.wip .tree-head{color:var(--vermilion)}
+.tree-box.idle .tree-head{color:var(--ink-3)}
+.tree-box .tree-head .badge{font-size:9.5px;padding:2px 8px;border:1px solid currentColor}
+.node-list{display:flex;flex-direction:column;gap:6px;font-family:var(--mono);font-size:12px}
+.node-row{
+  display:flex;align-items:center;gap:8px;padding:5px 9px;
+  border-left:2px solid var(--rule-strong);color:var(--ink-2);transition:.3s;
+}
+.node-row.lv0{border-left-color:var(--ink);color:var(--ink);font-weight:700}
+.node-row.lv1{margin-left:15px}
+.node-row.lv2{margin-left:30px;opacity:.8}
+.node-row.changed{border-left-color:var(--vermilion);background:rgba(217,58,30,.1);color:var(--vermilion-deep);font-weight:700}
+.node-row .dot{width:5px;height:5px;background:currentColor;flex-shrink:0}
+.swap-arrow{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+  font-family:var(--mono);font-size:22px;color:var(--ink-3);transition:.4s;
+}
+.swap-arrow.on{color:var(--vermilion)}
+.swap-arrow .lbl{font-size:9px;letter-spacing:.14em;writing-mode:vertical-rl;text-transform:uppercase}
+
+/* ══════════ 优先级车道 ══════════ */
+.prio{display:flex;flex-direction:column;gap:9px}
+.prio-row{display:grid;grid-template-columns:82px 1fr;gap:14px;align-items:center;font-size:13px}
+.prio-row .pname{font-family:var(--mono);font-size:11.5px;color:var(--ink);font-weight:700}
+.prio-row .pbar{height:24px;background:var(--paper-2);border:1px solid var(--rule);position:relative;overflow:hidden}
+.prio-row .pfill{
+  position:absolute;left:0;top:0;bottom:0;width:0;
+  background:linear-gradient(90deg,var(--ink),rgba(22,19,14,.35));
+  opacity:.4;transition:width .8s cubic-bezier(.4,0,.2,1),opacity .4s;
+}
+@media(prefers-color-scheme:dark){
+  .prio-row .pfill{background:linear-gradient(90deg,var(--ink),rgba(233,228,216,.3))}
+}
+.prio-row .pfill.lit{opacity:1;background:linear-gradient(90deg,var(--vermilion),rgba(217,58,30,.35))}
+.prio-row .pfill.hot.lit{background:linear-gradient(90deg,var(--vermilion-deep),var(--vermilion))}
+.prio-row .pfill.mid.lit{background:linear-gradient(90deg,var(--teal),rgba(15,107,98,.35))}
+.prio-row .pval{
+  position:absolute;right:10px;top:50%;transform:translateY(-50%);
+  font-family:var(--mono);font-size:10px;color:var(--ink-3);
+}
+.prio-row .pfill.lit+.pval{color:var(--ink);font-weight:700}
+
+/* ══════════ 时间切片轨道 ══════════ */
+.rail{position:relative;height:70px;background:var(--paper-2);border:1.5px solid var(--ink);overflow:hidden}
+.rail .chunk{
+  position:absolute;top:0;bottom:0;border-right:1px solid var(--ink);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.02em;
+  color:var(--ink);opacity:.16;transition:opacity .35s;white-space:nowrap;overflow:hidden;
+}
+.rail .chunk.show{opacity:1}
+.rail .chunk.f1{background:var(--teal);color:#fff}
+.rail .chunk.f2{background:var(--vermilion);color:#fff}
+.rail .chunk.f3{background:var(--ink);color:var(--paper)}
+.rail .interrupt{
+  position:absolute;top:0;bottom:0;width:4px;background:var(--vermilion-deep);
+  box-shadow:0 0 0 2px var(--card);opacity:0;transition:opacity .3s;
+}
+.rail .interrupt.show{opacity:1}
+.rail-axis{
+  display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;
+  color:var(--ink-3);margin-top:8px;letter-spacing:.05em;
+}
+
+/* ══════════ 对比双栏 ══════════ */
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:0;border:2px solid var(--ink);margin:24px 0;box-shadow:var(--shadow);background:var(--card)}
+@media(max-width:720px){.compare{grid-template-columns:1fr}}
+.compare>div{padding:22px 24px}
+.compare>div:first-child{border-right:1.5px dashed var(--rule-strong)}
+@media(max-width:720px){.compare>div:first-child{border-right:0;border-bottom:1.5px dashed var(--rule-strong)}}
+.compare h4{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;margin:0 0 12px}
+.compare .bad h4{color:var(--ink-3)}
+.compare .good h4{color:var(--vermilion)}
+.compare ul{list-style:none}
+.compare li{font-size:14.5px;color:var(--ink-2);padding:6px 0 6px 22px;position:relative}
+.compare .bad li::before{content:"✕";position:absolute;left:0;color:var(--ink-3);font-weight:700}
+.compare .good li::before{content:"✓";position:absolute;left:0;color:var(--vermilion);font-weight:700}
+
+/* ══════════ 速查表 ══════════ */
+.cheat{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
+  gap:0;border:2px solid var(--ink);box-shadow:var(--shadow);margin:32px 0 24px;background:var(--card);
+}
+.cheat>div{padding:20px 22px;border-right:1px solid var(--rule);border-bottom:1px solid var(--rule)}
+.cheat .k{font-family:var(--mono);font-size:12.5px;font-weight:800;color:var(--vermilion);display:block;margin-bottom:7px}
+.cheat .v{font-size:14px;color:var(--ink-2);line-height:1.65}
+
+/* ══════════ 收尾 ══════════ */
+.outro{margin:0 0 40px;padding-top:8px}
+.outro h2{
+  font-family:var(--serif);font-weight:900;font-size:clamp(26px,4vw,42px);
+  line-height:1.2;margin-bottom:22px;
+}
+.outro h2 em{font-style:normal;color:var(--vermilion)}
+.outro p{color:var(--ink-2);font-size:16.5px}
+
+/* ══════════ 浮动按钮 ══════════ */
+#home{
+  position:fixed;left:22px;bottom:22px;z-index:50;
+  font-family:var(--mono);font-size:12.5px;font-weight:700;letter-spacing:.1em;
+  background:var(--card);color:var(--ink);padding:11px 16px;
+  border:2px solid var(--ink);box-shadow:3px 3px 0 var(--ink);transition:.18s;
+}
+#home:hover{background:var(--vermilion);border-color:var(--vermilion-deep);color:#fff;transform:translate(-2px,-2px);box-shadow:5px 5px 0 var(--ink)}
+#top{
+  position:fixed;right:22px;bottom:22px;width:46px;height:46px;z-index:50;
+  background:var(--vermilion);color:#fff;border:0;cursor:pointer;font-size:20px;
+  opacity:0;pointer-events:none;transition:.3s;box-shadow:3px 3px 0 var(--ink);
+}
+#top.show{opacity:1;pointer-events:auto}
+#top:hover{transform:translateY(-3px)}
+@media(max-width:640px){#home{left:12px;bottom:12px;padding:9px 12px;font-size:11.5px}#top{right:12px;bottom:12px}}
+
+/* ══════════ 页脚 ══════════ */
+footer{
+  border-top:3px solid var(--ink);padding:36px 0 60px;
+  font-family:var(--mono);font-size:12.5px;color:var(--ink-3);
+  display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;letter-spacing:.05em;
+}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}
+  html{scroll-behavior:auto}
+}
+</style>
+</head>
+<body>
+
+<div id="progress" style="width: 0%"></div>
+<a id="home" href="../index.html" title="返回博客首页">← 首页</a>
+
+<!-- ══════════ HERO ══════════ -->
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">React Internals · 调度与渲染 · v1.0</div>
+    <h1>React Fiber 原理拆解<br>从 <em>setState 到可中断渲染</em></h1>
+    <p class="sub">
+      你每天在写 <code class="inline">&lt;div&gt;</code>，但有没有想过：
+      React 只是一个 JS 库，它凭什么能<b>一边算一边停</b>、<b>谁着急先给谁</b>、
+      还<b>不会把页面搞崩</b>？答案藏在一个叫 <strong>Fiber</strong> 的架构里。
+      本文用八个章节把它拆开看透 —— 三指针链表如何替代不可中断的递归、
+      双缓存树如何让「中途放弃」变成零成本操作、31 条 Lane 车道如何决定谁能插队，
+      以及每 5ms 一次的时间切片究竟切在了哪里。
+    </p>
+    <div class="chips">
+      <span class="chip hot">8 节 · 4 个可视化演示</span>
+      <span class="chip">React 18 源码</span>
+      <span class="chip">零前置源码基础</span>
+      <span class="chip">Lane 31 位二进制</span>
+      <span class="chip">200 行迷你实现</span>
+      <span class="chip">~25 分钟读完</span>
+    </div>
+    <div class="stamp">深度长文<br>逐步拆解<br>2026-10-06</div>
+  </div>
+</header>
+
+<div class="wrap layout">
+<nav class="toc" id="toc">
+  <div class="toc-title">目录 / CONTENTS</div>
+  <a href="#s0" class="">00 · 开场：先建立直觉</a>
+  <a href="#s1" class="">01 · 痛点：旧架构卡在哪</a>
+  <a href="#s2" class="">02 · Fiber 是什么</a>
+  <a href="#s3" class="">03 · 三大核心角色</a>
+  <a href="#s4" class="">04 · 双缓存树</a>
+  <a href="#s5" class="">05 · 优先级与车道</a>
+  <a href="#s6" class="">06 · 时间切片</a>
+  <a href="#s7">07 · 动手实现迷你 Fiber</a>
+</nav>
+
+<main>
+
+<!-- ══════════ 00 开场 ══════════ -->
+<section id="s0">
+  <div class="sec-head">
+    <div class="sec-num">00</div>
+    <h2>开场：先建立直觉，再看实现</h2>
+    <span class="tag">INTUITION</span>
+  </div>
+
+  <p>请不要一上来就打开源码。Fiber 难懂，不是因为它代码多，而是因为<strong>它同时在解决三个不同层面的问题</strong>，初学者容易把它们搅成一团。</p>
+
+  <p>所以我先给你一张地图。整篇文章其实只在回答三个问题：</p>
+
+  <div class="diagram">
+    <div class="lane">
+      <div class="lane-title">问题一 / HOW TO PAUSE —— 怎么停下来</div>
+      <div class="flow">
+        <div class="node model">递归调用栈<small>JS 引擎接管，无法保存进度</small></div>
+        <div class="arrow">→</div>
+        <div class="node persist">三指针链表<small>child / sibling / return</small></div>
+        <div class="arrow">→</div>
+        <div class="node">手动维护遍历路径<small>进度存在变量里，随时可续</small></div>
+      </div>
+    </div>
+    <div class="lane">
+      <div class="lane-title">问题二 / HOW TO SWAP —— 怎么不闪屏</div>
+      <div class="flow">
+        <div class="node model">直接改 DOM<small>用户看到改到一半的残缺界面</small></div>
+        <div class="arrow">→</div>
+        <div class="node persist">双缓存树<small>current ⇄ workInProgress</small></div>
+        <div class="arrow">→</div>
+        <div class="node">算好了再原子切换<small>用户永远只看到完整状态</small></div>
+      </div>
+    </div>
+    <div class="lane">
+      <div class="lane-title">问题三 / HOW TO PRIORITIZE —— 谁先谁后</div>
+      <div class="flow">
+        <div class="node model">FIFO 队列<small>打字和后台统计一样急</small></div>
+        <div class="arrow">→</div>
+        <div class="node persist">Lane 车道<small>31 位二进制位掩码</small></div>
+        <div class="arrow">→</div>
+        <div class="node">高优先级可插队<small>低优先级也不会饿死</small></div>
+      </div>
+    </div>
+    <div class="legend">
+      <b>▮ 红色描边</b> = Fiber 架构的解法 &nbsp;·&nbsp; 虚线框 = 旧架构或反面做法 &nbsp;·&nbsp;
+      三条线分别对应本文第 02、04、05 章
+    </div>
+  </div>
+
+  <div class="voice">
+    记住这张图，后面每一章都是在给其中一条线补细节。读完之后你再回头看，会觉得它特别简单 —— 因为 Fiber 确实没有魔法，它只是把「一口气干完」拆成了「慢慢来」。
+  </div>
+</section>
+
+<!-- ══════════ 01 痛点 ══════════ -->
+<section id="s1">
+  <div class="sec-head">
+    <div class="sec-num">01</div>
+    <h2>痛点：旧架构到底卡在哪里</h2>
+    <span class="tag">MOTIVATION</span>
+  </div>
+
+  <p>先说一个你大概率遇到过的场景：<strong>页面上疯狂输入，界面却一顿一顿的</strong>。老版本 React 的问题，就出在这。</p>
+
+  <p>React 15 及以前，更新走的是<strong>递归</strong>。当你调用 <code class="inline">setState</code>，React 会从根组件开始一口气递归下去：算差异、改 DOM，中间<strong>不能停</strong>。</p>
+
+  <p>问题在于：递归一旦开始，就没人能打断它。如果这棵组件树有 3000 个节点，那么这一整趟计算可能要跑 100ms 以上。而这 100ms 里，<strong>浏览器主线程被完全占死</strong> —— 用户点的按钮没反应，输入光标卡住，滚动掉帧。</p>
+
+  <div class="callout">
+    <b>核心矛盾：</b>浏览器一帧只有约 <strong>16.7ms</strong>（60fps）。JS 执行、样式计算、布局、绘制都要挤在这 16.7ms 里。React 15 的一次递归渲染很可能一口气吃掉 100ms，等于抢走了 6 帧 —— 用户自然感觉「卡」。
+  </div>
+
+  <h3>旧架构的两个致命伤</h3>
+
+  <div class="compare">
+    <div class="bad">
+      <h4>React 15 · 递归栈</h4>
+      <ul>
+        <li>无法中断：一旦开始必须跑完</li>
+        <li>无法区分优先级：所有更新一样急</li>
+        <li>无法复用：每次都是重新算</li>
+        <li>阻塞主线程，交互直接掉帧</li>
+      </ul>
+    </div>
+    <div class="good">
+      <h4>Fiber 架构 · 可中断链表</h4>
+      <ul>
+        <li>可中断、可恢复、可放弃</li>
+        <li>可排序：高优先级先执行</li>
+        <li>可复用：为并发特性打地基</li>
+        <li>让出主线程，交互始终跟手</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="voice">
+    所以 Fiber 要解决的核心问题，一句话概括：<strong>把「一口气干完」变成「分小块干、随时能停、急事优先」</strong>。为了实现这三件事，React 必须先把「递归」换成「可暂停的遍历」。
+  </div>
+</section>
+
+<!-- ══════════ 02 Fiber 是什么 ══════════ -->
+<section id="s2">
+  <div class="sec-head">
+    <div class="sec-num">02</div>
+    <h2>Fiber 到底是什么：三个身份，一个东西</h2>
+    <span class="tag">DEFINITION</span>
+  </div>
+
+  <p>「Fiber」这个词在不同语境下含义不同，这也是初学者最容易懵的地方。你只要记住它有<strong>三重身份</strong>，它们说的是同一个东西的不同侧面。</p>
+
+  <div class="pipe" id="fiberIdentities">
+    <div class="pipe-step" data-i="0">
+      <div class="pi">01</div>
+      <div class="pc">
+        <b>它是一个数据结构 —— 一个普通的 JS 对象</b>
+        <span>用来描述「一个组件 / 节点」长什么样，上面挂着 <code class="inline">type</code>、<code class="inline">props</code>、<code class="inline">stateNode</code>、<code class="inline">return</code>、<code class="inline">child</code>、<code class="inline">sibling</code> 等字段。</span>
+      </div>
+    </div>
+    <div class="pipe-step on" data-i="1">
+      <div class="pi">02</div>
+      <div class="pc">
+        <b>它是一个执行单元 —— 一次可以被打断的小任务</b>
+        <span>每个 Fiber 节点就是「工作循环」里的一次迭代。处理完一个，检查一下时间够不够，不够就先让给浏览器。</span>
+      </div>
+    </div>
+    <div class="pipe-step" data-i="2">
+      <div class="pi">03</div>
+      <div class="pc">
+        <b>它是一种架构 —— 整个 React 16+ 的运行时骨架</b>
+        <span>调度器（Scheduler）、协调器（Reconciler）、渲染器（Renderer）三层协作，构成了现代 React 的骨架。</span>
+      </div>
+    </div>
+  </div>
+
+  <h3>核心：Fiber 节点的字段结构</h3>
+
+  <p>先看这个简化后的对象。你不需要背下来，但要看懂它的<strong>链接关系</strong> —— 这正是「可中断遍历」的关键。</p>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">fiber-node.js</span><span class="lang">JS</span><button class="copy">copy</button></div>
+<pre><span class="tok-c">// 一个 Fiber 节点的核心字段（简化版）</span>
+<span class="tok-k">const</span> fiber = {
+  <span class="tok-c">// —— 我是谁 ——</span>
+  <span class="tok-p">tag</span>: <span class="tok-n">0</span>,                  <span class="tok-c">// 节点类型标记：函数组件 / 类组件 / HostComponent…</span>
+  <span class="tok-p">type</span>: <span class="tok-s">'div'</span>,             <span class="tok-c">// 元素类型，比如 'div' 或函数本身</span>
+  <span class="tok-p">key</span>: <span class="tok-k">null</span>,
+  <span class="tok-p">stateNode</span>: domElement,    <span class="tok-c">// 对应的真实 DOM 节点（HostComponent 才有）</span>
+
+  <span class="tok-c">// —— 我的状态 ——</span>
+  <span class="tok-p">pendingProps</span>: {},          <span class="tok-c">// 本次要用的新 props</span>
+  <span class="tok-p">memoizedProps</span>: {},         <span class="tok-c">// 上次渲染用的 props</span>
+  <span class="tok-p">memoizedState</span>: <span class="tok-k">null</span>,      <span class="tok-c">// 上次渲染的状态（Hooks 链表就挂在这）</span>
+
+  <span class="tok-c">// ★★★ 树的指针 —— 可中断遍历的根本 ★★★</span>
+  <span class="tok-p">return</span>: parentFiber,      <span class="tok-c">// 父节点（不叫 parent，而叫 return：处理完要「返回去」）</span>
+  <span class="tok-p">child</span>: firstChildFiber,   <span class="tok-c">// 第一个子节点（只有第一个！）</span>
+  <span class="tok-p">sibling</span>: nextSiblingFiber, <span class="tok-c">// 下一个兄弟节点</span>
+
+  <span class="tok-c">// —— 双缓存 ——</span>
+  <span class="tok-p">alternate</span>: otherFiber,    <span class="tok-c">// 指向「另一棵树」上对应的节点</span>
+
+  <span class="tok-c">// —— 副作用与优先级 ——</span>
+  <span class="tok-p">flags</span>: <span class="tok-n">0</span>,                <span class="tok-c">// 标记这个节点需要做什么（插入/更新/删除）</span>
+  <span class="tok-p">lanes</span>: <span class="tok-n">0</span>,                <span class="tok-c">// 这个节点包裹了哪些优先级的更新</span>
+};</pre>
+  </div>
+
+  <div class="principle">
+    <div class="p-label">PRINCIPLE 01</div>
+    <h4>child 只指向第一个子节点，其余靠 sibling 串成链表</h4>
+    <p>子节点靠 <code class="inline">return</code> 指回父节点，兄弟之间靠 <code class="inline">sibling</code> 依次相连。
+    这三根指针合起来，把「树」变成了一条<strong>可以随时停下、随时继续走</strong>的路径 —— 这就是 Fiber 能中断的秘密。</p>
+  </div>
+
+  <h3>为什么用 child / sibling / return，而不是递归？</h3>
+
+  <p>因为<strong>递归用的是 JS 调用栈，而调用栈一旦展开就没法保存进度</strong>。用指针手动维护遍历路径，我们就能把「当前走到哪个节点了」存在变量里，随时退出函数、稍后再从那个变量继续。</p>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">ReactFiberWorkLoop.js</span><span class="lang">JS</span><button class="copy">copy</button></div>
+<pre><span class="tok-c">// 伪代码：Fiber 的「工作循环」核心逻辑</span>
+<span class="tok-k">function</span> <span class="tok-f">workLoopConcurrent</span>() {
+  <span class="tok-c">// 只要还有活干，且当前帧还有剩余时间</span>
+  <span class="tok-k">while</span> (workInProgress !== <span class="tok-k">null</span> &amp;&amp; !<span class="tok-f">shouldYield</span>()) {
+    workInProgress = <span class="tok-f">performUnitOfWork</span>(workInProgress);
+  }
+  <span class="tok-c">// 走到这里要么活干完了，要么时间用完了要交还主线程</span>
+}
+
+<span class="tok-k">function</span> <span class="tok-f">performUnitOfWork</span>(fiber) {
+  <span class="tok-c">// 1. 处理当前节点：算 diff、生成子 Fiber</span>
+  <span class="tok-k">const</span> next = <span class="tok-f">beginWork</span>(fiber);
+
+  <span class="tok-k">if</span> (next !== <span class="tok-k">null</span>) {
+    <span class="tok-k">return</span> next;          <span class="tok-c">// 有子节点 → 继续往下钻</span>
+  }
+
+  <span class="tok-c">// 2. 没有子节点了，开始「收尾」，并往回找兄弟</span>
+  <span class="tok-k">let</span> cur = fiber;
+  <span class="tok-k">while</span> (cur !== <span class="tok-k">null</span>) {
+    <span class="tok-f">completeWork</span>(cur);       <span class="tok-c">// 创建/更新真实 DOM，收集副作用</span>
+    <span class="tok-k">if</span> (cur.sibling !== <span class="tok-k">null</span>) {
+      <span class="tok-k">return</span> cur.sibling;    <span class="tok-c">// 有兄弟 → 转去处理兄弟</span>
+    }
+    cur = cur.return;        <span class="tok-c">// 没兄弟 → 回退到父节点</span>
+  }
+  <span class="tok-k">return</span> <span class="tok-k">null</span>;             <span class="tok-c">// 整棵树都处理完了</span>
+}</pre>
+  </div>
+
+  <div class="callout">
+    <b>关键点：</b><code class="inline">performUnitOfWork</code> 每处理完一个 Fiber 就返回一次。回到 <code class="inline">while</code> 循环后，会检查 <code class="inline">shouldYield()</code> —— 如果这一帧时间用完了，就<strong>立刻 break 出循环，把控制权还给浏览器</strong>。下次浏览器空闲时从 <code class="inline">workInProgress</code> 继续，进度一点不丢。
+  </div>
+</section>
+
+<!-- ══════════ 03 三大角色 ══════════ -->
+<section id="s3">
+  <div class="sec-head">
+    <div class="sec-num">03</div>
+    <h2>三大核心角色：调度、协调、渲染</h2>
+    <span class="tag">ARCHITECTURE</span>
+  </div>
+
+  <p>React 16+ 把原来一坨的逻辑拆成了三层，各司其职。理解这三层分工，后面的内容就顺了。</p>
+
+  <div class="viz">
+    <div class="viz-label">交互演示</div>
+    <div class="viz-title">一次 setState 之后，到底发生了什么？</div>
+    <div class="viz-desc">点击下方任意一步，看它属于哪一层、干了什么；也可以点「依次演示」看完整链路。这四步走完，页面才真正更新。</div>
+
+    <div class="pipe" id="threeLayerPipe">
+      <div class="pipe-step" data-layer="scheduler">
+        <div class="pi">S</div>
+        <div class="pc">
+          <b>Scheduler 调度器 · 安排优先级与时机</b>
+          <span>决定「什么时候执行」。它参考浏览器帧率算出当前还剩多少时间，通过 <code class="inline">MessageChannel</code> 在浏览器空闲时唤起任务。</span>
+        </div>
+      </div>
+      <div class="pipe-step" data-layer="reconciler">
+        <div class="pi">R</div>
+        <div class="pc">
+          <b>Reconciler 协调器 · 找出「要改什么」</b>
+          <span>这是 Fiber 的主战场。执行 <code class="inline">beginWork</code> / <code class="inline">completeWork</code>，对比新旧 Fiber 树，算出增删改，把结果标记在 <code class="inline">flags</code> 上。</span>
+        </div>
+      </div>
+      <div class="pipe-step" data-layer="renderer">
+        <div class="pi">D</div>
+        <div class="pc">
+          <b>Renderer 渲染器 · 真正去改 DOM</b>
+          <span>ReactDOM 负责执行。遍历带 <code class="inline">flags</code> 的 Fiber，调用原生 DOM API 完成插入、更新、删除。</span>
+        </div>
+      </div>
+      <div class="pipe-step" data-layer="paint">
+        <div class="pi">P</div>
+        <div class="pc">
+          <b>Browser 浏览器 · 绘制到屏幕</b>
+          <span>DOM 改完后浏览器做样式计算、布局、绘制。至此用户才看到画面变化。</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="btn" id="playThree">▶ 依次演示</button>
+      <div class="status-line" id="threeStatus">等待开始 <span>/ idle</span></div>
+    </div>
+  </div>
+
+  <div class="voice">
+    关键理解：<strong>调度器决定「何时」、协调器决定「改什么」、渲染器决定「怎么改」</strong>。三者解耦之后，React 才有可能做并发 —— 因为「算」和「改」被拆开了，「算」的过程可以被打断，而「改」是一次性提交的。
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>角色</th><th>对应包</th><th>核心职责</th><th>能否被打断</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>调度器</td><td><code>scheduler</code></td>
+          <td>任务排序、时间片分配、空闲回调</td><td>本身是调度者</td>
+        </tr>
+        <tr>
+          <td>协调器</td><td><code>react-reconciler</code></td>
+          <td>执行 Fiber 的 begin / complete、diff、打标记</td>
+          <td><b class="red">可以</b>（render 阶段）</td>
+        </tr>
+        <tr>
+          <td>渲染器</td><td><code>react-dom</code></td>
+          <td>提交副作用、操作真实 DOM</td>
+          <td><b>不可以</b>（commit 阶段）</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════ 04 双缓存 ══════════ -->
+<section id="s4">
+  <div class="sec-head">
+    <div class="sec-num">04</div>
+    <h2>双缓存树：为什么内存里要有两棵树</h2>
+    <span class="tag">DOUBLE BUFFERING</span>
+  </div>
+
+  <div class="voice">
+    这一步理解透了，Fiber 就懂一半了。想象你在画一张图：如果直接在屏幕上改，用户会看到你<strong>画到一半的残缺样子</strong>。聪明的做法是在草稿纸上画好整张，然后「啪」一下换上去。React 就是这么干的。
+  </div>
+
+  <p>React 内存里同时维护着两棵 Fiber 树：</p>
+
+  <ul class="list">
+    <li><strong>current 树</strong> —— 当前正显示在屏幕上的那一棵，用户看到的就是它。</li>
+    <li><strong>workInProgress 树</strong>（简称 WIP）—— 正在草稿上构建的那一棵，改动都发生在它身上。</li>
+    <li>两棵树上<strong>对应位置的节点通过 <code class="inline">alternate</code> 互相指认</strong>，成为一对镜像。</li>
+  </ul>
+
+  <p>当 WIP 树全部构建完成、副作用收集完毕，React 会执行一个动作：<strong>把 <code class="inline">root.current</code> 指向 WIP 树</strong>。这一瞬间，「草稿」变成了「正稿」，用户看到画面更新。这个过程是<strong>一次性、同步、不可打断</strong>的。</p>
+
+  <div class="viz">
+    <div class="viz-label">交互演示</div>
+    <div class="viz-title">双缓存切换：一次更新的完整生命周期</div>
+    <div class="viz-desc">点击按钮，观察两棵树如何分工。青色是屏幕上正在显示的，朱砂色是草稿。注意最后「切换」那一下 —— 它是原子的。</div>
+
+    <div class="tree-pair" id="dbStage">
+      <div class="tree-box current" id="treeCur">
+        <div class="tree-head">
+          <span>current 树</span>
+          <span class="badge" id="curBadge">屏幕上</span>
+        </div>
+        <div class="node-list" id="curList"><div class="node-row lv0"><span class="dot"></span>App</div><div class="node-row lv1"><span class="dot"></span>Header</div><div class="node-row lv2"><span class="dot"></span>Counter · 0</div><div class="node-row lv1"><span class="dot"></span>Footer</div></div>
+      </div>
+
+      <div class="swap-arrow" id="swapArrow">
+        <div class="lbl">alternate</div>
+        <div id="arrowGlyph">⇄</div>
+      </div>
+
+      <div class="tree-box wip idle" id="treeWip">
+        <div class="tree-head">
+          <span>workInProgress</span>
+          <span class="badge" id="wipBadge">草稿</span>
+        </div>
+        <div class="node-list" id="wipList"><div class="node-row lv0" style="opacity:.3"><span class="dot"></span>—</div>
+      <div class="node-row lv1" style="opacity:.3"><span class="dot"></span>—</div>
+      <div class="node-row lv2" style="opacity:.3"><span class="dot"></span>—</div>
+      <div class="node-row lv1" style="opacity:.3"><span class="dot"></span>—</div></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="btn" id="dbPlay">▶ 播放一次更新</button>
+      <button class="btn ghost" id="dbReset">↺ 重置</button>
+      <div class="status-line" id="dbStatus">计数器当前值：0 <span>/ 等待操作</span></div>
+    </div>
+  </div>
+
+  <h3>为什么必须是两棵树？</h3>
+
+  <ul class="list">
+    <li><strong>避免中间态闪烁</strong>：用户永远只看到一棵完整的树，不会看到「改了一半」的界面。</li>
+    <li><strong>支持可中断渲染</strong>：WIP 树可以在内存里慢慢构建，构建到一半被打断也没关系，因为屏幕上显示的 current 树完好无损。</li>
+    <li><strong>复用节点、降低开销</strong>：构建 WIP 时会尽量复用 current 树上对应的 Fiber 节点（通过 <code class="inline">alternate</code>），而不是全部新建。</li>
+    <li><strong>让「算」与「改」彻底分开</strong>：算的时候随意打断，改的时候集中提交。</li>
+  </ul>
+
+  <div class="principle dark">
+    <div class="p-label">CLASSIC 面试题</div>
+    <h4>React 为什么需要双缓存？</h4>
+    <p>标准答案就一句话：<strong>为了把渲染过程拆成「可中断的计算」和「不可中断的提交」两个阶段，同时保证用户看不到中间状态</strong>。而连接两棵树的桥梁，就是每个 Fiber 上的 <code class="inline">alternate</code> 指针。</p>
+  </div>
+</section>
+
+<!-- ══════════ 05 优先级 ══════════ -->
+<section id="s5">
+  <div class="sec-head">
+    <div class="sec-num">05</div>
+    <h2>优先级与车道：谁能插队，谁要排队</h2>
+    <span class="tag">PRIORITY &amp; LANES</span>
+  </div>
+
+  <div class="voice">
+    你可能听过 React 会把更新分优先级。但「怎么分」这件事，React 换过好几套方案，最终落到了 <strong>Lane（车道）</strong> 模型上。我用一个比喻讲清楚。
+  </div>
+
+  <p>想象一条高速公路，有 <strong>31 条车道</strong>（Lane 的实质就是一个 31 位的二进制数）。每一次更新会被分配到一个或多个车道上，车道编号越小、越靠前的，代表优先级越高，跑得越早。</p>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">ReactFiberLane.js</span><span class="lang">JS</span><button class="copy">copy</button></div>
+<pre><span class="tok-c">// React 源码里 Lane 的定义（节选，用位运算表示）</span>
+<span class="tok-k">export const</span> SyncLane            = <span class="tok-n">0b0000000000000000000000000000001</span>;
+<span class="tok-k">export const</span> InputContinuousLane = <span class="tok-n">0b0000000000000000000000000000100</span>;
+<span class="tok-k">export const</span> DefaultLane         = <span class="tok-n">0b0000000000000000000000000010000</span>;
+<span class="tok-k">export const</span> TransitionLane1     = <span class="tok-n">0b0000000000000000000000001000000</span>;
+<span class="tok-k">export const</span> IdleLane            = <span class="tok-n">0b0010000000000000000000000000000</span>;
+
+<span class="tok-c">// 一个 fiber 可以用 lane 表示「我这个节点上挂了哪些待处理的更新」</span>
+fiber.lanes = SyncLane | InputContinuousLane;  <span class="tok-c">// 位运算，一次表示多个</span>
+
+<span class="tok-c">// 判断优先级：取最低位就是当前最高优先级</span>
+<span class="tok-k">const</span> nextLane = <span class="tok-f">getHighestPriorityLane</span>(lanes); <span class="tok-c">// lanes &amp; -lanes</span></pre>
+  </div>
+
+  <div class="viz">
+    <div class="viz-label">交互演示</div>
+    <div class="viz-title">优先级队列：React 会怎么挑任务？</div>
+    <div class="viz-desc">点击按钮注入一组更新，观察调度器选择顺序。规则：同级按插入顺序，高优先级可插队低优先级。</div>
+
+    <div class="prio" id="prioQueue">
+      <div class="prio-row">
+        <div class="pname">SyncLane</div>
+        <div class="pbar"><div class="pfill hot" data-w="14" style="width: 14%;"></div><div class="pval">最高 · 立即</div></div>
+      </div>
+      <div class="prio-row">
+        <div class="pname">InputCont.</div>
+        <div class="pbar"><div class="pfill mid" data-w="30" style="width: 30%;"></div><div class="pval">输入响应</div></div>
+      </div>
+      <div class="prio-row">
+        <div class="pname">DefaultLane</div>
+        <div class="pbar"><div class="pfill" data-w="54" style="width: 54%;"></div><div class="pval">常规更新</div></div>
+      </div>
+      <div class="prio-row">
+        <div class="pname">Transition</div>
+        <div class="pbar"><div class="pfill" data-w="76" style="width: 76%;"></div><div class="pval">可打断过渡</div></div>
+      </div>
+      <div class="prio-row">
+        <div class="pname">IdleLane</div>
+        <div class="pbar"><div class="pfill" data-w="96" style="width: 96%;"></div><div class="pval">最闲的时候</div></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="btn" id="prioPlay">▶ 演示调度顺序</button>
+      <div class="status-line" id="prioStatus">点击开始，看 React 如何挑任务 <span>/ idle</span></div>
+    </div>
+  </div>
+
+  <h3>常见场景对应哪条车道</h3>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>触发场景</th><th>车道</th><th>优先级</th><th>行为特点</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>flushSync</code> 包裹的更新</td><td><code>SyncLane</code></td><td>最高</td><td>同步执行，不进入调度</td></tr>
+        <tr><td>用户点击、输入</td><td><code>InputContinuousLane</code></td><td>很高</td><td>必须快速响应</td></tr>
+        <tr><td>普通 <code>setState</code></td><td><code>DefaultLane</code></td><td>中</td><td>常规并发调度</td></tr>
+        <tr><td><code>useTransition</code> / <code>startTransition</code></td><td><code>TransitionLanes</code></td><td>低</td><td>可被高优先级打断并重启</td></tr>
+        <tr><td><code>requestIdleCallback</code> 类比</td><td><code>IdleLane</code></td><td>最低</td><td>系统空闲才做</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="pitfall">
+    <div class="no">01</div>
+    <div class="body">
+      <h5>优先级不是「谁先来谁先执行」，也不是「高的永远赢」</h5>
+      <p>它是一套带<strong>饥饿保护</strong>的机制 —— 低优先级任务如果一直被打断，React 会逐步提升它的优先级，保证它最终一定能执行完，不会饿死。</p>
+    </div>
+  </div>
+
+  <h3>高优先级打断低优先级，会重新开始吗？</h3>
+
+  <p>会，但<strong>不是从头开始</strong>。这是 Fiber 设计得最精妙的地方之一：如果一次低优先级的渲染工作做到一半，突然来了高优先级更新，React 会：</p>
+
+  <ol class="steps">
+    <li><b>放弃当前 WIP 树</b>把已经算了一半的进度丢弃（或者尽可能复用）。</li>
+    <li><b>优先处理高优先级任务</b>用最高的那条 Lane 重新构建。</li>
+    <li><b>高优先级提交完成后</b>再回过头，把低优先级剩下的部分重新算一遍。</li>
+  </ol>
+
+  <div class="callout">
+    <b>为什么能这样：</b>因为 WIP 树是「草稿」，<strong>丢了也不影响屏幕上显示的东西</strong>。这正是双缓存架构的价值 —— 让「中途放弃」变成了零成本的正常操作，而不是事故。
+  </div>
+</section>
+
+<!-- ══════════ 06 时间切片 ══════════ -->
+<section id="s6">
+  <div class="sec-head">
+    <div class="sec-num">06</div>
+    <h2>时间切片：React 是怎么「让路」的</h2>
+    <span class="tag">TIME SLICING</span>
+  </div>
+
+  <p>前面反复提到「让出主线程」。具体怎么让？答案是通过 <code class="inline">shouldYield()</code> 判断 —— 而这个判断来自 Scheduler 对当前帧剩余时间的估算。</p>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">Scheduler.js</span><span class="lang">JS</span><button class="copy">copy</button></div>
+<pre><span class="tok-c">// scheduler 中的时间片判断（简化）</span>
+<span class="tok-k">const</span> frameInterval = <span class="tok-n">5</span>;  <span class="tok-c">// React 主动把时间片定为 5ms，比一帧还小，留足余量</span>
+<span class="tok-k">let</span> deadline = <span class="tok-n">0</span>;
+
+<span class="tok-k">function</span> <span class="tok-f">shouldYieldToHost</span>() {
+  <span class="tok-k">const</span> timeElapsed = <span class="tok-f">getCurrentTime</span>() - startTime;
+  <span class="tok-k">return</span> timeElapsed &gt;= frameInterval;   <span class="tok-c">// 超过 5ms 就交还主线程</span>
+}
+
+<span class="tok-c">// 用 MessageChannel 而非 setTimeout：宏任务中优先级更高，延迟更小</span>
+<span class="tok-k">const</span> channel = <span class="tok-k">new</span> <span class="tok-t">MessageChannel</span>();
+channel.port1.onmessage = <span class="tok-f">performWorkUntilDeadline</span>;
+<span class="tok-k">function</span> <span class="tok-f">schedulePerformWorkUntilDeadline</span>() {
+  channel.port2.<span class="tok-f">postMessage</span>(<span class="tok-k">null</span>);  <span class="tok-c">// 下个宏任务里接着干</span>
+}</pre>
+  </div>
+
+  <div class="viz">
+    <div class="viz-label">交互演示</div>
+    <div class="viz-title">时间切片：把一次长渲染切成多块</div>
+    <div class="viz-desc">下面是一条时间轴。点击演示，看 React 如何把一棵大树的计算切成多个 5ms 时间片，并在切片之间「把时间还给浏览器」。</div>
+
+    <div class="rail" id="rail">
+      <div class="chunk f1 show" data-start="0" data-w="18" data-label="Fiber 1-40" style="left: 0%; width: 18%;">Fiber 1-40</div>
+      <div class="chunk f2 show" data-start="18" data-w="14" data-label="Fiber 41-90" style="left: 18%; width: 14%;">Fiber 41-90</div>
+      <div class="chunk f3 show" data-start="32" data-w="20" data-label="Fiber 91-160" style="left: 32%; width: 20%;">Fiber 91-160</div>
+      <div class="chunk f1 show" data-start="52" data-w="16" data-label="Fiber 161-230" style="left: 52%; width: 16%;">Fiber 161-230</div>
+      <div class="chunk f2 show" data-start="68" data-w="22" data-label="Fiber 231-300" style="left: 68%; width: 22%;">Fiber 231-300</div>
+      <div class="chunk f3 show" data-start="90" data-w="10" data-label="Commit" style="left: 90%; width: 10%;">Commit</div>
+      <div class="interrupt" id="interrupt" style="left:32%"></div>
+    </div>
+    <div class="rail-axis">
+      <span>0ms · 开始渲染</span>
+      <span>↓ 每 5ms 让路一次</span>
+      <span>100ms · 提交完成</span>
+    </div>
+
+    <div class="controls">
+      <button class="btn" id="railPlay">▶ 播放时间切片</button>
+      <button class="btn ghost" id="railInterrupt">⚡ 插入高优先级更新</button>
+      <button class="btn ghost" id="railReset">↺ 重置</button>
+      <div class="status-line" id="railStatus">✓ 渲染并提交完成 <span>/ committed</span></div>
+    </div>
+  </div>
+
+  <h3>完整的 render 阶段遍历顺序</h3>
+
+  <p>把前面的知识串起来：一次 render 阶段的遍历，本质是「<strong>深度优先 + 可中断</strong>」。走法是这样的：</p>
+
+  <div class="tree">
+<b>App</b>
+├── Header                    <span class="dim">← 无 child，completeWork(Header) → 找 sibling</span>
+└── Main                      <span class="dim">← 有 child，继续下钻</span>
+    ├── List                  <span class="dim">← 无 child，completeWork(List) → 找 sibling</span>
+    └── Aside                 <span class="dim">← 无 sibling，return 回 Main</span>
+
+<b>遍历顺序（begin 向下，complete 向上）：</b>
+<span class="dim">begin(App) → begin(Header) → complete(Header) → begin(Main) →
+begin(List) → complete(List) → begin(Aside) → complete(Aside) →
+complete(Main) → complete(App) → 返回 null，render 结束</span>
+
+<b>★ 每个 begin / complete 之间都可能被 shouldYield() 打断</b>
+<b>★ 只有 render 阶段可以打断；commit 阶段一旦开始必须跑完</b>
+  </div>
+
+  <div class="principle">
+    <div class="p-label">PRINCIPLE 02</div>
+    <h4>render 阶段可中断，commit 阶段不可中断</h4>
+    <p>这就是为什么 React 要求「渲染函数必须是纯函数」—— 因为你可能在渲染到一半时被打断、被丢弃、被重启。
+    有副作用的代码写在渲染里，就会重复执行，出 bug。</p>
+  </div>
+</section>
+
+<!-- ══════════ 07 动手实现 ══════════ -->
+<section id="s7">
+  <div class="sec-head">
+    <div class="sec-num">07</div>
+    <h2>动手：200 行实现一个迷你 Fiber</h2>
+    <span class="tag">HANDS-ON</span>
+  </div>
+
+  <div class="voice">
+    光看不动手，永远记不住。下面这段代码用最精简的方式复刻了 Fiber 的核心思想。你可以直接复制到浏览器控制台跑起来，亲眼看看可中断遍历是怎么回事。
+  </div>
+
+  <div class="block">
+    <div class="block-bar"><span class="dot"></span><span class="fname">mini-fiber.js</span><span class="lang">JS</span><button class="copy">copy</button></div>
+<pre><span class="tok-c">// ═══════ 一个极简版 Fiber 实现 ═══════</span>
+<span class="tok-c">// 目标：理解 child / sibling / return 三指针遍历 + 时间切片</span>
+
+<span class="tok-k">let</span> nextUnitOfWork = <span class="tok-k">null</span>;   <span class="tok-c">// 下一个要处理的工作单元</span>
+<span class="tok-k">let</span> wipRoot = <span class="tok-k">null</span>;          <span class="tok-c">// work-in-progress 树的根</span>
+<span class="tok-k">let</span> currentRoot = <span class="tok-k">null</span>;        <span class="tok-c">// 当前屏幕上的树</span>
+
+<span class="tok-c">// 1. 创建 Fiber 节点：把 vnode 包装成可遍历的 Fiber</span>
+<span class="tok-k">function</span> <span class="tok-f">createFiber</span>(element, parent) {
+  <span class="tok-k">return</span> {
+    type: element.type,
+    props: element.props,
+    dom: <span class="tok-k">null</span>,
+    parent,                   <span class="tok-c">// 相当于 return 指针</span>
+    child: <span class="tok-k">null</span>,
+    sibling: <span class="tok-k">null</span>,
+    alternate: <span class="tok-k">null</span>,        <span class="tok-c">// 指向 old fiber（双缓存）</span>
+    effectTag: <span class="tok-s">'PLACEMENT'</span>,  <span class="tok-c">// 副作用标记</span>
+  };
+}
+
+<span class="tok-c">// 2. 工作循环：带时间切片的遍历</span>
+<span class="tok-k">function</span> <span class="tok-f">workLoop</span>(deadline) {
+  <span class="tok-k">let</span> shouldYield = <span class="tok-k">false</span>;
+  <span class="tok-k">while</span> (nextUnitOfWork &amp;&amp; !shouldYield) {
+    nextUnitOfWork = <span class="tok-f">performUnitOfWork</span>(nextUnitOfWork);
+    shouldYield = deadline.<span class="tok-f">timeRemaining</span>() &lt; <span class="tok-n">1</span>;  <span class="tok-c">// ★ 时间不够就让路</span>
+  }
+
+  <span class="tok-k">if</span> (!nextUnitOfWork &amp;&amp; wipRoot) {
+    <span class="tok-f">commitRoot</span>();          <span class="tok-c">// 全部算完 → 一次性提交</span>
+  }
+}
+
+<span class="tok-c">// 3. 处理单个工作单元</span>
+<span class="tok-k">function</span> <span class="tok-f">performUnitOfWork</span>(fiber) {
+  <span class="tok-c">// (a) 处理自己：创建 DOM</span>
+  <span class="tok-k">if</span> (!fiber.dom) fiber.dom = <span class="tok-f">createDom</span>(fiber);
+
+  <span class="tok-c">// (b) 为自己挂上父 DOM（如果是新插入）</span>
+  <span class="tok-k">if</span> (fiber.parent) <span class="tok-f">appendToParent</span>(fiber);
+
+  <span class="tok-c">// (c) 为子元素创建 Fiber，串成链表</span>
+  <span class="tok-k">let</span> index = <span class="tok-n">0</span>;
+  <span class="tok-k">let</span> prevSibling = <span class="tok-k">null</span>;
+  <span class="tok-k">const</span> elements = fiber.props.children || [];
+  <span class="tok-k">while</span> (index &lt; elements.length) {
+    <span class="tok-k">const</span> childFiber = <span class="tok-f">createFiber</span>(elements[index], fiber);
+    <span class="tok-k">if</span> (index === <span class="tok-n">0</span>) fiber.child = childFiber;
+    <span class="tok-k">else</span> prevSibling.sibling = childFiber;
+    prevSibling = childFiber;
+    index++;
+  }
+
+  <span class="tok-c">// (d) 找下一个工作单元：先子 → 后兄弟 → 再回溯</span>
+  <span class="tok-k">if</span> (fiber.child) <span class="tok-k">return</span> fiber.child;
+  <span class="tok-k">let</span> cur = fiber;
+  <span class="tok-k">while</span> (cur) {
+    <span class="tok-k">if</span> (cur.sibling) <span class="tok-k">return</span> cur.sibling;
+    cur = cur.parent;
+  }
+  <span class="tok-k">return</span> <span class="tok-k">null</span>;   <span class="tok-c">// 整棵树完成</span>
+}
+
+<span class="tok-c">// 4. 提交阶段：一次性把所有 DOM 改动落地（不可打断）</span>
+<span class="tok-k">function</span> <span class="tok-f">commitRoot</span>() {
+  <span class="tok-f">commitWork</span>(wipRoot.child);
+  currentRoot = wipRoot;   <span class="tok-c">// ★ 切换！current 指向新树</span>
+  wipRoot = <span class="tok-k">null</span>;
+  nextUnitOfWork = <span class="tok-k">null</span>;
+}
+
+<span class="tok-c">// 5. render：启动一次渲染</span>
+<span class="tok-k">function</span> <span class="tok-f">render</span>(element, container) {
+  wipRoot = {
+    dom: container,
+    props: { children: [element] },
+    alternate: currentRoot,       <span class="tok-c">// ★ 挂上旧树，形成双缓存</span>
+  };
+  nextUnitOfWork = wipRoot;
+  <span class="tok-t">requestIdleCallback</span>(workLoop);  <span class="tok-c">// 在浏览器空闲时开始工作</span>
+}</pre>
+  </div>
+
+  <div class="callout">
+    <b>跑起来试试：</b>打开任意网页的控制台，粘贴上面代码，然后执行
+    <code class="inline">render({ type: 'div', props: {children: ['hello fiber']} }, document.body)</code>。
+    你会看到元素出现 —— 虽然只是几十行核心逻辑，但 Fiber 的<strong>三指针遍历、时间切片、双缓存切换</strong>三件事，它都做到了。
+  </div>
+
+  <h3>再回头看：Fiber 到底解决了什么</h3>
+
+  <div class="compare">
+    <div class="bad">
+      <h4>没有 Fiber 时</h4>
+      <ul>
+        <li>setState 后主线程被占满</li>
+        <li>输入框打字卡顿、丢字</li>
+        <li>复杂页面首屏渲染白屏久</li>
+        <li>无法区分轻重缓急</li>
+      </ul>
+    </div>
+    <div class="good">
+      <h4>有了 Fiber 之后</h4>
+      <ul>
+        <li>渲染可中断，交互始终跟手</li>
+        <li>高优先级插队，打字不丢字</li>
+        <li>可渐进式渲染，白屏更短</li>
+        <li>并发特性（Transition、Suspense）成为可能</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ 收尾 ══════════ -->
+<div class="outro">
+  <h2>Fiber 没有魔法。<br>它只是把「一口气干完」<em>拆成了「慢慢来」</em>。</h2>
+
+  <p>如果你读到了这里，恭喜 —— 你已经掌握了 React 最核心的架构思想。回头看，整个过程其实只有三个关键动作，却撑起了现代 React 的全部并发能力。</p>
+
+  <div class="cheat">
+    <div>
+      <span class="k">① 三指针链表</span>
+      <span class="v">child / sibling / return 把树变成可暂停的路径，替代了不可中断的递归调用栈。</span>
+    </div>
+    <div>
+      <span class="k">② 双缓存树</span>
+      <span class="v">current 与 workInProgress 互为镜像，让「算」可以随便中断，「改」可以原子提交。</span>
+    </div>
+    <div>
+      <span class="k">③ 优先级车道</span>
+      <span class="v">用位运算管理 31 条 Lane，让「急事」真的能插队，「慢事」也不会饿死。</span>
+    </div>
+    <div>
+      <span class="k">④ 时间切片</span>
+      <span class="v">每 5ms 检查一次是否该让路，把主线程还给人，交互永远优先于后台计算。</span>
+    </div>
+    <div>
+      <span class="k">⑤ 两阶段提交</span>
+      <span class="v">render 可中断、commit 不可中断。这也是「渲染函数必须是纯函数」的根本原因。</span>
+    </div>
+    <div>
+      <span class="k">⑥ 三层架构</span>
+      <span class="v">Scheduler 决定何时、Reconciler 决定改什么、Renderer 决定怎么改，解耦才能并发。</span>
+    </div>
+  </div>
+
+  <div class="principle teal">
+    <div class="p-label">下一步建议</div>
+    <h4>带着这套框架去读源码</h4>
+    <p>推荐按这个顺序继续：<strong>①</strong> 打开 <code class="inline">ReactFiberWorkLoop.js</code>，找到 <code class="inline">workLoopConcurrent</code> 函数；
+    <strong>②</strong> 读 <code class="inline">ReactFiberBeginWork.js</code> 里的 <code class="inline">beginWork</code>，看它如何根据 <code class="inline">tag</code> 分发；
+    <strong>③</strong> 看 <code class="inline">ReactFiberLane.js</code>，理解位运算怎么做到 O(1) 取最高优先级。
+    带着本文建立的框架去读，你会发现源码其实很好懂。</p>
+  </div>
+</div>
+
+</main>
+</div>
+
+<footer class="wrap">
+  <span>REACT FIBER — SCHEDULING &amp; RENDERING FIELD MANUAL</span>
+  <span>基于 React 18 源码整理 · 2026-10-06</span>
+</footer>
+
+<button id="top" title="回到顶部" class="show">↑</button>
+
+<script>
+/* ---------- 进度条 + 回顶 ---------- */
+const prog = document.getElementById('progress');
+const topBtn = document.getElementById('top');
+addEventListener('scroll', () => {
+  const h = document.documentElement;
+  const p = h.scrollTop / (h.scrollHeight - h.clientHeight);
+  prog.style.width = (p * 100) + '%';
+  topBtn.classList.toggle('show', h.scrollTop > 600);
+}, {passive: true});
+topBtn.onclick = () => scrollTo({top: 0, behavior: 'smooth'});
+
+/* ---------- TOC scrollspy ---------- */
+const tocLinks = [...document.querySelectorAll('#toc a')];
+const secs = tocLinks.map(a => document.querySelector(a.getAttribute('href')));
+const spy = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      const id = '#' + e.target.id;
+      tocLinks.forEach(a => a.classList.toggle('on', a.getAttribute('href') === id));
+    }
+  });
+}, {rootMargin: '-15% 0px -70% 0px'});
+secs.forEach(s => s && spy.observe(s));
+
+/* ---------- 代码复制 ---------- */
+document.querySelectorAll('.block .copy').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const pre = btn.closest('.block').querySelector('pre');
+    navigator.clipboard.writeText(pre.innerText).then(() => {
+      const old = btn.textContent;
+      btn.textContent = 'copied';
+      setTimeout(() => btn.textContent = old, 1400);
+    }).catch(() => {});
+  });
+});
+
+/* ---------- 02 三重身份 ---------- */
+(() => {
+  const steps = [...document.querySelectorAll('#fiberIdentities .pipe-step')];
+  let timer = null, k = 0;
+  steps.forEach(s => s.addEventListener('click', () => {
+    if (timer) { clearInterval(timer); timer = null; }
+    steps.forEach(x => x.classList.remove('on'));
+    s.classList.add('on');
+  }));
+  const obs = new IntersectionObserver(e => {
+    if (!e[0].isIntersecting || timer) return;
+    const cycle = () => {
+      steps.forEach(x => x.classList.remove('on'));
+      steps[k % steps.length].classList.add('on');
+      k++;
+    };
+    cycle();
+    timer = setInterval(cycle, 2200);
+    obs.disconnect();
+  }, {threshold: .3});
+  obs.observe(document.getElementById('fiberIdentities'));
+})();
+
+/* ---------- 03 三层架构 ---------- */
+(() => {
+  const steps = [...document.querySelectorAll('#threeLayerPipe .pipe-step')];
+  const btn = document.getElementById('playThree');
+  const status = document.getElementById('threeStatus');
+  const labels = [
+    ['调度器 · 估算剩余时间', 'scheduler'],
+    ['协调器 · 构建 WIP 树', 'reconciler'],
+    ['渲染器 · 提交 DOM 改动', 'renderer'],
+    ['浏览器 · 绘制到屏幕', 'browser · painted']
+  ];
+  let running = false;
+  btn.addEventListener('click', () => {
+    if (running) return;
+    running = true;
+    steps.forEach(s => s.classList.remove('on'));
+    let i = 0;
+    const tick = () => {
+      if (i >= steps.length) {
+        status.innerHTML = '✓ 更新完成 <span>/ done</span>';
+        running = false;
+        return;
+      }
+      steps.forEach(s => s.classList.remove('on'));
+      steps[i].classList.add('on');
+      status.innerHTML = labels[i][0] + ' <span>/ ' + labels[i][1] + '</span>';
+      i++;
+      setTimeout(tick, 1100);
+    };
+    tick();
+  });
+  steps.forEach((s, i) => s.addEventListener('click', () => {
+    if (running) return;
+    steps.forEach(x => x.classList.remove('on'));
+    s.classList.add('on');
+    status.innerHTML = labels[i][0] + ' <span>/ ' + labels[i][1] + '</span>';
+  }));
+})();
+
+/* ---------- 04 双缓存 ---------- */
+(() => {
+  const treeCur = document.getElementById('treeCur');
+  const treeWip = document.getElementById('treeWip');
+  const curList = document.getElementById('curList');
+  const wipList = document.getElementById('wipList');
+  const curBadge = document.getElementById('curBadge');
+  const wipBadge = document.getElementById('wipBadge');
+  const arrow = document.getElementById('swapArrow');
+  const glyph = document.getElementById('arrowGlyph');
+  const status = document.getElementById('dbStatus');
+  let count = 0, running = false, timers = [];
+  const clear = () => { while (timers.length) clearTimeout(timers.pop()); };
+
+  const renderList = (el, items, hl) => {
+    el.innerHTML = items.map((it, i) =>
+      `<div class="node-row ${it.lv}${i === hl ? ' changed' : ''}"><span class="dot"></span>${it.t}</div>`
+    ).join('');
+  };
+  const baseItems = c => [
+    {lv:'lv0', t:'App'},
+    {lv:'lv1', t:'Header'},
+    {lv:'lv2', t:`Counter · ${c}`},
+    {lv:'lv1', t:'Footer'},
+  ];
+
+  const reset = () => {
+    clear(); running = false; count = 0;
+    treeCur.className = 'tree-box current';
+    treeWip.className = 'tree-box wip idle';
+    curBadge.textContent = '屏幕上';
+    wipBadge.textContent = '草稿';
+    arrow.classList.remove('on');
+    glyph.textContent = '⇄';
+    renderList(curList, baseItems(0), -1);
+    wipList.innerHTML = `<div class="node-row lv0" style="opacity:.3"><span class="dot"></span>—</div>
+      <div class="node-row lv1" style="opacity:.3"><span class="dot"></span>—</div>
+      <div class="node-row lv2" style="opacity:.3"><span class="dot"></span>—</div>
+      <div class="node-row lv1" style="opacity:.3"><span class="dot"></span>—</div>`;
+    status.innerHTML = '计数器当前值：0 <span>/ 等待操作</span>';
+  };
+
+  document.getElementById('dbPlay').addEventListener('click', () => {
+    if (running) return;
+    running = true; clear(); count++;
+
+    treeWip.className = 'tree-box wip';
+    wipBadge.textContent = '构建中';
+    arrow.classList.add('on');
+    status.innerHTML = '阶段 1 / 在草稿树上构建 <span>/ render</span>';
+    renderList(wipList, baseItems(count - 1), 2);
+
+    timers.push(setTimeout(() => {
+      renderList(wipList, baseItems(count), 2);
+      status.innerHTML = '阶段 2 / 计算 diff，标记变更 <span>/ reconcile</span>';
+    }, 900));
+
+    timers.push(setTimeout(() => {
+      glyph.textContent = '⇉';
+      status.innerHTML = '阶段 3 / 提交：切换 current 指针 <span>/ commit</span>';
+      treeCur.className = 'tree-box current';
+      renderList(curList, baseItems(count), 2);
+      treeWip.className = 'tree-box wip idle';
+      wipBadge.textContent = '已切换';
+    }, 1800));
+
+    timers.push(setTimeout(() => {
+      glyph.textContent = '⇄';
+      wipBadge.textContent = '新的草稿位';
+      arrow.classList.remove('on');
+      status.innerHTML = `✓ 更新完成，屏幕显示 ${count} <span>/ done</span>`;
+      running = false;
+    }, 2700));
+  });
+  document.getElementById('dbReset').addEventListener('click', reset);
+  reset();
+})();
+
+/* ---------- 05 优先级队列 ---------- */
+(() => {
+  const btn = document.getElementById('prioPlay');
+  const status = document.getElementById('prioStatus');
+  const fills = [...document.querySelectorAll('#prioQueue .pfill')];
+  const rows = [...document.querySelectorAll('#prioQueue .prio-row')];
+  let running = false;
+  fills.forEach(f => { f.style.width = (f.dataset.w || 20) + '%'; });
+
+  btn.addEventListener('click', () => {
+    if (running) return;
+    running = true;
+    rows.forEach(r => r.style.background = 'transparent');
+    fills.forEach(f => { f.classList.remove('lit'); f.style.width = '0'; });
+
+    const order = [
+      {i:0, w:92, msg:'SyncLane 最先执行 —— 用户点击必须立刻响应'},
+      {i:1, w:78, msg:'InputContinuousLane 跟上 —— 输入不能卡'},
+      {i:2, w:62, msg:'DefaultLane 常规更新 —— 排队执行'},
+      {i:3, w:44, msg:'TransitionLane 可打断 —— 被高优先级抢了就重来'},
+      {i:4, w:28, msg:'IdleLane 最后 —— 系统真的闲下来了才做'},
+    ];
+    let k = 0;
+    const tick = () => {
+      if (k >= order.length) {
+        status.innerHTML = '✓ 全部执行完成 <span>/ all lanes flushed</span>';
+        running = false;
+        return;
+      }
+      const o = order[k];
+      fills[o.i].style.width = o.w + '%';
+      fills[o.i].classList.add('lit');
+      rows[o.i].style.background = 'rgba(217,58,30,.05)';
+      status.innerHTML = o.msg + ' <span>/ lane ' + (o.i + 1) + '/5</span>';
+      k++;
+      setTimeout(tick, 1050);
+    };
+    setTimeout(tick, 150);
+  });
+})();
+
+/* ---------- 06 时间切片 ---------- */
+(() => {
+  const rail = document.getElementById('rail');
+  const chunks = [...rail.querySelectorAll('.chunk')];
+  chunks.forEach(c => {
+    c.style.left = c.dataset.start + '%';
+    c.style.width = c.dataset.w + '%';
+  });
+  const interrupt = document.getElementById('interrupt');
+  const status = document.getElementById('railStatus');
+  let running = false, timers = [];
+  const clear = () => { while (timers.length) clearTimeout(timers.pop()); };
+
+  const reset = () => {
+    clear(); running = false;
+    chunks.forEach(c => c.classList.remove('show'));
+    interrupt.classList.remove('show');
+    status.innerHTML = '等待开始 <span>/ idle</span>';
+  };
+
+  document.getElementById('railPlay').addEventListener('click', () => {
+    if (running) return;
+    running = true; clear();
+    chunks.forEach(c => c.classList.remove('show'));
+    interrupt.classList.remove('show');
+    chunks.forEach((c, i) => {
+      timers.push(setTimeout(() => {
+        c.classList.add('show');
+        const isCommit = c.dataset.label === 'Commit';
+        status.innerHTML = (isCommit ? '⚡ 提交阶段（不可打断）' : '处理中 · 已让路 ' + i + ' 次') +
+                           ' <span>/ ' + c.dataset.label + '</span>';
+        if (i === chunks.length - 1) {
+          status.innerHTML = '✓ 渲染并提交完成 <span>/ committed</span>';
+          running = false;
+        }
+      }, i * 620));
+    });
+  });
+
+  document.getElementById('railInterrupt').addEventListener('click', () => {
+    if (running) return;
+    running = true; clear();
+    chunks.forEach(c => c.classList.remove('show'));
+    interrupt.classList.remove('show');
+
+    timers.push(setTimeout(() => chunks[0].classList.add('show'), 80));
+    timers.push(setTimeout(() => {
+      chunks[1].classList.add('show');
+      status.innerHTML = '正在处理低优先级任务… <span>/ transition</span>';
+    }, 560));
+    timers.push(setTimeout(() => {
+      interrupt.classList.add('show');
+      chunks.slice(2).forEach(c => c.classList.remove('show'));
+      status.innerHTML = '⚡ 高优先级插入！低优先级任务被放弃 <span>/ interrupted</span>';
+    }, 1150));
+    timers.push(setTimeout(() => {
+      interrupt.classList.remove('show');
+      chunks.forEach(c => c.classList.remove('show'));
+      status.innerHTML = '重新开始：高优先级用 SyncLane 走一遍 <span>/ restart</span>';
+    }, 1950));
+    timers.push(setTimeout(() => {
+      chunks.forEach((c, i) => {
+        timers.push(setTimeout(() => {
+          c.classList.add('show');
+          if (i === chunks.length - 1) {
+            status.innerHTML = '✓ 高优先级已完成，低优先级可重算 <span>/ done</span>';
+            running = false;
+          }
+        }, i * 420));
+      });
+    }, 2450));
+  });
+
+  document.getElementById('railReset').addEventListener('click', reset);
+  reset();
+})();
+</script>
+
+
+</body></html>
