@@ -276,6 +276,9 @@ footer a:hover{color:var(--vermilion);border-bottom-color:var(--vermilion)}
   .about-grid{grid-template-columns:minmax(0,1fr)}
   .topnav a.about-link{display:none}
 }
+@media (max-width:440px){
+  .brand-name{display:none}
+}
 @media (max-width:560px){
   .topbar{padding:11px 14px}
   .brand{font-size:12.5px;gap:8px}
@@ -297,10 +300,11 @@ footer a:hover{color:var(--vermilion);border-bottom-color:var(--vermilion)}
 <div id="progress"></div>
 
 <header class="topbar">
-  <a class="brand" href="index.html"><span class="brand-mark">X</span>xunxiancoming</a>
+  <a class="brand" href="index.html"><span class="brand-mark">X</span><span class="brand-name">xunxiancoming</span></a>
   <nav class="topnav">
     <a href="#articles">文章 / Posts</a>
     <a class="about-link" href="#about">关于 / About</a>
+    <a href="https://vscode.dev/" target="_blank" rel="noopener">在线 VS Code ↗</a>
     <a class="gh" href="https://github.com/xunxiancoming" target="_blank" rel="noopener">GitHub ↗</a>
   </nav>
 </header>
